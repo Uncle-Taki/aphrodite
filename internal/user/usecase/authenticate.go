@@ -57,7 +57,6 @@ func (uc *AuthenticateUser) Execute(ctx context.Context, in AuthenticateInput) (
 	return &AuthenticateResult{User: u, Token: token}, nil
 }
 
-// lookup tries username first, then email
 func (uc *AuthenticateUser) lookup(ctx context.Context, identifier string) (*domain.User, error) {
 	u, err := uc.repo.FindByUsername(ctx, identifier)
 	if err == nil {

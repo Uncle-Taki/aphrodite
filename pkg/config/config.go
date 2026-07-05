@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/joho/godotenv"
@@ -18,8 +17,6 @@ type Config struct {
 	Port       string
 	Database   DatabaseConfig
 	Redis      RedisConfig
-	Octopus    OctopusConfig
-	Heimdall   HeimdallConfig
 	Auth       AuthConfig
 	Validation ValidationConfig
 	Pagination PaginationConfig
@@ -50,28 +47,12 @@ type RedisConfig struct {
 	DB       int
 }
 
-type OctopusConfig struct {
-	BaseURL             string
-	AdminUsername       string
-	AdminPassword       string
-	RequestTimeout      time.Duration
-	ProxyRequestTimeout time.Duration
-}
-
-type HeimdallConfig struct {
-	Bypass       bool
-	GRPCAddr     string
-	GRPCTimeout  time.Duration
-	ServiceToken string
-	TokenType    string
-	AdminUserIDs []string
-}
-
 type AuthConfig struct {
 	JWTSecret         string
 	AccessTokenTTL    time.Duration
 	JWTMinSecretBytes int
 	BcryptCost        int
+	SuperAdminKey     string
 }
 
 type ValidationConfig struct {
@@ -81,6 +62,8 @@ type ValidationConfig struct {
 }
 
 type PaginationConfig struct {
+	UserDefaultLimit    int
+	UserMaxLimit        int
 	PostDefaultLimit    int
 	PostMaxLimit        int
 	CommentDefaultLimit int
@@ -96,7 +79,7 @@ type UsageConfig struct {
 }
 
 func Load() {
-	_ = godotenv.Load(".env", ".heimdal.env", ".octopus.txt")
+	_ = godotenv.Load(".env")
 
 	C = Config{
 		Env:      getEnv("APP_ENV", "development"),
@@ -108,19 +91,12 @@ func Load() {
 			Password: getEnv("REDIS_PASSWORD", ""),
 			DB:       getEnvInt("REDIS_DB", 0),
 		},
-		Octopus: OctopusConfig{
-			BaseURL:             mustGetEnv("OCTOPUS_BASE_URL"),
-			AdminUsername:       mustGetEnv("OCTOPUS_ADMIN_USERNAME"),
-			AdminPassword:       mustGetEnv("OCTOPUS_ADMIN_PASSWORD"),
-			RequestTimeout:      getEnvDuration("OCTOPUS_REQUEST_TIMEOUT", 30*time.Second),
-			ProxyRequestTimeout: getEnvDuration("OCTOPUS_PROXY_REQUEST_TIMEOUT", 120*time.Second),
-		},
-		Heimdall: loadHeimdallConfig(),
 		Auth: AuthConfig{
 			JWTSecret:         mustGetEnv("JWT_SECRET"),
-			AccessTokenTTL:    getEnvDuration("JWT_ACCESS_TOKEN_TTL", 24*time.Hour),
+			AccessTokenTTL:    mustGetEnvDuration("JWT_ACCESS_TOKEN_TTL"),
 			JWTMinSecretBytes: mustGetPositiveEnvInt("JWT_MIN_SECRET_BYTES"),
 			BcryptCost:        mustGetPositiveEnvInt("AUTH_BCRYPT_COST"),
+			SuperAdminKey:     mustGetEnv("SUPER_ADMIN_KEY"),
 		},
 		Validation: ValidationConfig{
 			PostTitleMaxLength:      mustGetPositiveEnvInt("POST_TITLE_MAX_LENGTH"),
@@ -128,6 +104,8 @@ func Load() {
 			CommentContentMaxLength: mustGetPositiveEnvInt("COMMENT_CONTENT_MAX_LENGTH"),
 		},
 		Pagination: PaginationConfig{
+			UserDefaultLimit:    mustGetPositiveEnvInt("USER_DEFAULT_LIMIT"),
+			UserMaxLimit:        mustGetPositiveEnvInt("USER_MAX_LIMIT"),
 			PostDefaultLimit:    mustGetPositiveEnvInt("POST_DEFAULT_LIMIT"),
 			PostMaxLimit:        mustGetPositiveEnvInt("POST_MAX_LIMIT"),
 			CommentDefaultLimit: mustGetPositiveEnvInt("COMMENT_DEFAULT_LIMIT"),
@@ -152,29 +130,6 @@ func loadDatabaseConfig() DatabaseConfig {
 		SSLMode:         getEnv("POSTGRES_SSLMODE", "disable"),
 		MaintainIndexes: getEnvBool("POSTGRES_MAINTAIN_ASSIGNMENT_INDEXES", false),
 	}
-}
-
-func loadHeimdallConfig() HeimdallConfig {
-	bypass := getEnvBool("HEIMDALL_BYPASS", false)
-	if bypass && getEnv("APP_ENV", "development") == "production" {
-		panic("HEIMDALL_BYPASS=true is forbidden when APP_ENV=production")
-	}
-
-	cfg := HeimdallConfig{
-		Bypass:       bypass,
-		GRPCAddr:     os.Getenv("HEIMDALL_GRPC_ADDR"),
-		GRPCTimeout:  getEnvDuration("HEIMDALL_GRPC_TIMEOUT", 5*time.Second),
-		ServiceToken: os.Getenv("HEIMDALL_SERVICE_TOKEN"),
-		TokenType:    getEnv("HEIMDALL_TOKEN_TYPE", "access_token"),
-		AdminUserIDs: getEnvStringList("HEIMDALL_ADMIN_USER_IDS", nil),
-	}
-	if bypass {
-		return cfg
-	}
-	if cfg.GRPCAddr == "" {
-		panic("heimdall gRPC address not configured: set HEIMDALL_GRPC_ADDR or HEIMDALL_BYPASS=true")
-	}
-	return cfg
 }
 
 func getEnv(key, fallback string) string {
@@ -231,25 +186,6 @@ func getEnvInt(key string, fallback int) int {
 		return fallback
 	}
 	return n
-}
-
-func getEnvStringList(key string, fallback []string) []string {
-	v := os.Getenv(key)
-	if v == "" {
-		return fallback
-	}
-	parts := strings.Split(v, ",")
-	out := make([]string, 0, len(parts))
-	for _, p := range parts {
-		p = strings.TrimSpace(p)
-		if p != "" {
-			out = append(out, p)
-		}
-	}
-	if len(out) == 0 {
-		return fallback
-	}
-	return out
 }
 
 func getEnvDuration(key string, fallback time.Duration) time.Duration {

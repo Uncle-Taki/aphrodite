@@ -1,0 +1,17 @@
+root = "."
+tmp_dir = "tmp"
+
+[build]
+  cmd = "go build -buildvcs=false -o ./tmp/aphrodite-api ./cmd/api"
+  bin = "./tmp/aphrodite-api"
+  include_ext = ["go", "tmpl", "yaml"]
+  exclude_dir = ["tmp", "docs", "bin", ".git", ".agents", "build"]
+  delay = 500
+  stop_on_error = true
+  log = "build-errors.log"
+
+[log]
+  time = true
+
+[misc]
+  clean_on_exit = true
