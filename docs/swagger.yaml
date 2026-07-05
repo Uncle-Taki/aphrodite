@@ -1,0 +1,907 @@
+basePath: /
+definitions:
+  comment_transport_http.ErrorResponse:
+    properties:
+      error:
+        type: string
+    type: object
+  handlers.HealthResponse:
+    properties:
+      postgres:
+        example: up
+        type: string
+      redis:
+        example: up
+        type: string
+      status:
+        example: healthy
+        type: string
+    type: object
+  http.AddCommentRequest:
+    properties:
+      content:
+        example: Great post!
+        type: string
+    required:
+    - content
+    type: object
+  http.AdminUpdateUserRequest:
+    properties:
+      email:
+        example: alice@example.com
+        type: string
+      phone_number:
+        example: "+15551234567"
+        type: string
+      role:
+        enum:
+        - user
+        - admin
+        example: user
+        type: string
+      username:
+        example: alice
+        type: string
+    required:
+    - email
+    - username
+    type: object
+  http.AuthenticateRequest:
+    properties:
+      identifier:
+        example: alice
+        type: string
+      password:
+        example: correct-horse-battery-staple
+        type: string
+    required:
+    - identifier
+    - password
+    type: object
+  http.AuthenticateResponse:
+    properties:
+      token:
+        type: string
+      user:
+        $ref: '#/definitions/http.UserResponse'
+    type: object
+  http.ChangePasswordRequest:
+    properties:
+      current_password:
+        example: correct-horse-battery-staple
+        type: string
+      new_password:
+        example: new-correct-horse-battery-staple
+        type: string
+    required:
+    - current_password
+    - new_password
+    type: object
+  http.CommentListResponse:
+    properties:
+      comments:
+        items:
+          $ref: '#/definitions/http.CommentResponse'
+        type: array
+      limit:
+        type: integer
+      page:
+        type: integer
+      total:
+        type: integer
+    type: object
+  http.CommentResponse:
+    properties:
+      author_id:
+        type: string
+      content:
+        type: string
+      created_at:
+        type: string
+      id:
+        type: string
+      post_id:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  http.CreatePostRequest:
+    properties:
+      content:
+        example: This is my first post.
+        type: string
+      title:
+        example: Hello, world
+        type: string
+    required:
+    - content
+    - title
+    type: object
+  http.PostListResponse:
+    properties:
+      limit:
+        type: integer
+      page:
+        type: integer
+      posts:
+        items:
+          $ref: '#/definitions/http.PostResponse'
+        type: array
+      total:
+        type: integer
+    type: object
+  http.PostResponse:
+    properties:
+      author_id:
+        type: string
+      content:
+        type: string
+      created_at:
+        type: string
+      id:
+        type: string
+      title:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  http.RegisterRequest:
+    properties:
+      email:
+        example: alice@example.com
+        type: string
+      password:
+        example: correct-horse-battery-staple
+        type: string
+      phone_number:
+        example: "+15551234567"
+        type: string
+      role:
+        enum:
+        - user
+        - admin
+        example: user
+        type: string
+      super_admin_key:
+        example: bootstrap-secret
+        type: string
+      username:
+        example: alice
+        type: string
+    required:
+    - email
+    - password
+    - username
+    type: object
+  http.UpdateCommentRequest:
+    properties:
+      content:
+        example: Updated comment.
+        type: string
+    required:
+    - content
+    type: object
+  http.UpdateMeRequest:
+    properties:
+      email:
+        example: alice@example.com
+        type: string
+      phone_number:
+        example: "+15551234567"
+        type: string
+      username:
+        example: alice
+        type: string
+    required:
+    - email
+    - username
+    type: object
+  http.UpdatePostRequest:
+    properties:
+      content:
+        example: Updated post content.
+        type: string
+      title:
+        example: Updated title
+        type: string
+    required:
+    - content
+    - title
+    type: object
+  http.UserListResponse:
+    properties:
+      limit:
+        type: integer
+      page:
+        type: integer
+      total:
+        type: integer
+      users:
+        items:
+          $ref: '#/definitions/http.UserResponse'
+        type: array
+    type: object
+  http.UserResponse:
+    properties:
+      created_at:
+        type: string
+      email:
+        type: string
+      id:
+        type: string
+      phone_number:
+        type: string
+      role:
+        enum:
+        - user
+        - admin
+        type: string
+      updated_at:
+        type: string
+      username:
+        type: string
+    type: object
+  post_transport_http.ErrorResponse:
+    properties:
+      error:
+        type: string
+    type: object
+  user_transport_http.ErrorResponse:
+    properties:
+      error:
+        type: string
+    type: object
+info:
+  contact: {}
+  description: Simple blog backend. Users register, log in, publish posts, and comment.
+  title: Aphrodite API
+  version: 0.1.0
+paths:
+  /healthz:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handlers.HealthResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/handlers.HealthResponse'
+      summary: Health check
+      tags:
+      - health
+  /v1/comments/{id}:
+    delete:
+      parameters:
+      - description: Comment UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/comment_transport_http.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/comment_transport_http.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/comment_transport_http.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/comment_transport_http.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/comment_transport_http.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Delete a comment (author or admin)
+      tags:
+      - comments
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Comment UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Comment payload
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/http.UpdateCommentRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/http.CommentResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/comment_transport_http.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/comment_transport_http.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/comment_transport_http.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/comment_transport_http.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/comment_transport_http.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update a comment (author or admin)
+      tags:
+      - comments
+  /v1/posts:
+    get:
+      parameters:
+      - description: Page size (defaults to POST_DEFAULT_LIMIT, capped by POST_MAX_LIMIT)
+        in: query
+        name: limit
+        type: integer
+      - description: Page number (default 1)
+        in: query
+        name: page
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/http.PostListResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/post_transport_http.ErrorResponse'
+      summary: List posts (paginated)
+      tags:
+      - posts
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Post payload
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/http.CreatePostRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/http.PostResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/post_transport_http.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/post_transport_http.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/post_transport_http.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Create a post
+      tags:
+      - posts
+  /v1/posts/{id}:
+    delete:
+      parameters:
+      - description: Post UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/post_transport_http.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/post_transport_http.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/post_transport_http.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/post_transport_http.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/post_transport_http.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Delete a post (author or admin)
+      tags:
+      - posts
+    get:
+      parameters:
+      - description: Post UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/http.PostResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/post_transport_http.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/post_transport_http.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/post_transport_http.ErrorResponse'
+      summary: Get a post
+      tags:
+      - posts
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Post UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Post payload
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/http.UpdatePostRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/http.PostResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/post_transport_http.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/post_transport_http.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/post_transport_http.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/post_transport_http.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/post_transport_http.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update a post (author or admin)
+      tags:
+      - posts
+  /v1/posts/{id}/comments:
+    get:
+      parameters:
+      - description: Post UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Page size (defaults to COMMENT_DEFAULT_LIMIT, capped by COMMENT_MAX_LIMIT)
+        in: query
+        name: limit
+        type: integer
+      - description: Page number (default 1)
+        in: query
+        name: page
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/http.CommentListResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/comment_transport_http.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/comment_transport_http.ErrorResponse'
+      summary: List comments for a post
+      tags:
+      - comments
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Post UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Comment payload
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/http.AddCommentRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/http.CommentResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/comment_transport_http.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/comment_transport_http.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/comment_transport_http.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Add a comment to a post
+      tags:
+      - comments
+  /v1/users:
+    get:
+      parameters:
+      - description: Page size (defaults to USER_DEFAULT_LIMIT, capped by USER_MAX_LIMIT)
+        in: query
+        name: limit
+        type: integer
+      - description: Page number (default 1)
+        in: query
+        name: page
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/http.UserListResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/user_transport_http.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/user_transport_http.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/user_transport_http.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List users (admin)
+      tags:
+      - users
+  /v1/users/{id}:
+    get:
+      parameters:
+      - description: User UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/http.UserResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/user_transport_http.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/user_transport_http.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/user_transport_http.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/user_transport_http.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/user_transport_http.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get user by ID (admin)
+      tags:
+      - users
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: User UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Profile payload
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/http.AdminUpdateUserRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/http.UserResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/user_transport_http.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/user_transport_http.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/user_transport_http.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/user_transport_http.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/user_transport_http.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/user_transport_http.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update user by ID (admin)
+      tags:
+      - users
+  /v1/users/login:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Login payload — identifier accepts username or email
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/http.AuthenticateRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/http.AuthenticateResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/user_transport_http.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/user_transport_http.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/user_transport_http.ErrorResponse'
+      summary: Authenticate (login)
+      tags:
+      - users
+  /v1/users/me:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/http.UserResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/user_transport_http.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/user_transport_http.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/user_transport_http.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get current user profile
+      tags:
+      - users
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Profile payload
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/http.UpdateMeRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/http.UserResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/user_transport_http.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/user_transport_http.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/user_transport_http.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/user_transport_http.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update current user profile
+      tags:
+      - users
+  /v1/users/me/password:
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Password payload
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/http.ChangePasswordRequest'
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/user_transport_http.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/user_transport_http.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/user_transport_http.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Change current user password
+      tags:
+      - users
+  /v1/users/register:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Registration payload
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/http.RegisterRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/http.UserResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/user_transport_http.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/user_transport_http.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/user_transport_http.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/user_transport_http.ErrorResponse'
+      summary: Register a new user
+      tags:
+      - users
+securityDefinitions:
+  BearerAuth:
+    description: Aphrodite session token from POST /v1/users/login — send as "Bearer
+      <token>"
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"

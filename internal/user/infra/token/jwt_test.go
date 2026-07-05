@@ -14,6 +14,10 @@ import (
 
 const testJWTSecret = "0123456789abcdef0123456789abcdef"
 
+func testJWTConfig(ttl time.Duration) JWTConfig {
+	return JWTConfig{Secret: testJWTSecret, TTL: ttl, MinSecretBytes: 32}
+}
+
 func testJWTUser() *domain.User {
 	return &domain.User{
 		ID:   uuid.MustParse("b3f6a3a8-6df0-4e9e-a9c0-d4a1c1e58a9f"),
@@ -23,7 +27,7 @@ func testJWTUser() *domain.User {
 
 func TestJWT_IssueVerifyRoundTrip(t *testing.T) {
 	now := time.Date(2026, 7, 5, 12, 0, 0, 0, time.UTC)
-	issuer, err := newJWT(testJWTSecret, time.Hour, func() time.Time { return now })
+	issuer, err := newJWT(testJWTConfig(time.Hour), func() time.Time { return now })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -47,7 +51,7 @@ func TestJWT_IssueVerifyRoundTrip(t *testing.T) {
 
 func TestJWT_VerifyRejectsExpiredToken(t *testing.T) {
 	now := time.Date(2026, 7, 5, 12, 0, 0, 0, time.UTC)
-	issuer, err := newJWT(testJWTSecret, time.Hour, func() time.Time { return now })
+	issuer, err := newJWT(testJWTConfig(time.Hour), func() time.Time { return now })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,7 +68,7 @@ func TestJWT_VerifyRejectsExpiredToken(t *testing.T) {
 }
 
 func TestJWT_VerifyRejectsTamperedToken(t *testing.T) {
-	issuer, err := newJWT(testJWTSecret, time.Hour, time.Now)
+	issuer, err := newJWT(testJWTConfig(time.Hour), time.Now)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,7 +92,7 @@ func replacementJWTChar(last byte) string {
 }
 
 func TestJWT_VerifyRejectsWrongSecret(t *testing.T) {
-	issuer, err := newJWT(testJWTSecret, time.Hour, time.Now)
+	issuer, err := newJWT(testJWTConfig(time.Hour), time.Now)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -97,7 +101,11 @@ func TestJWT_VerifyRejectsWrongSecret(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	verifier, err := newJWT("abcdef0123456789abcdef0123456789", time.Hour, time.Now)
+	verifier, err := newJWT(JWTConfig{
+		Secret:         "abcdef0123456789abcdef0123456789",
+		TTL:            time.Hour,
+		MinSecretBytes: 32,
+	}, time.Now)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -108,10 +116,10 @@ func TestJWT_VerifyRejectsWrongSecret(t *testing.T) {
 }
 
 func TestJWT_NewRejectsWeakSettings(t *testing.T) {
-	if _, err := NewJWT("short", time.Hour); err == nil {
+	if _, err := NewJWT(JWTConfig{Secret: "short", TTL: time.Hour, MinSecretBytes: 32}); err == nil {
 		t.Fatal("expected short secret to be rejected")
 	}
-	if _, err := NewJWT(testJWTSecret, 0); err == nil {
+	if _, err := NewJWT(JWTConfig{Secret: testJWTSecret, TTL: 0, MinSecretBytes: 32}); err == nil {
 		t.Fatal("expected non-positive ttl to be rejected")
 	}
 }

@@ -1,7 +1,6 @@
 package config
 
 import (
-	"strings"
 	"testing"
 	"time"
 )
@@ -82,38 +81,6 @@ func TestGetEnvInt_FallsBackWhenUnset(t *testing.T) {
 	}
 }
 
-func TestGetEnvStringList_ParsesAndTrims(t *testing.T) {
-	t.Setenv("aphrodite_TEST_LIST", " a ,b,, c,  ")
-	got := getEnvStringList("aphrodite_TEST_LIST", nil)
-	want := []string{"a", "b", "c"}
-	if len(got) != len(want) {
-		t.Fatalf("expected %v, got %v", want, got)
-	}
-	for i := range want {
-		if got[i] != want[i] {
-			t.Fatalf("entry %d: expected %q, got %q", i, want[i], got[i])
-		}
-	}
-}
-
-func TestGetEnvStringList_FallbackWhenUnset(t *testing.T) {
-	t.Setenv("aphrodite_TEST_LIST", "")
-	fb := []string{"x"}
-	got := getEnvStringList("aphrodite_TEST_LIST", fb)
-	if len(got) != 1 || got[0] != "x" {
-		t.Fatalf("expected fallback, got %v", got)
-	}
-}
-
-func TestGetEnvStringList_FallbackWhenAllEmpty(t *testing.T) {
-	t.Setenv("aphrodite_TEST_LIST", " , , ")
-	fb := []string{"x"}
-	got := getEnvStringList("aphrodite_TEST_LIST", fb)
-	if len(got) != 1 || got[0] != "x" {
-		t.Fatalf("expected fallback for all-empty entries, got %v", got)
-	}
-}
-
 func TestGetEnvDuration_ParsesValid(t *testing.T) {
 	t.Setenv("aphrodite_TEST_DUR", "1h30m")
 	if got := getEnvDuration("aphrodite_TEST_DUR", 0); got != 90*time.Minute {
@@ -185,23 +152,16 @@ func TestLoadReadsTopLevelSettings(t *testing.T) {
 	t.Setenv("REDIS_ADDR", "redis:6379")
 	t.Setenv("REDIS_PASSWORD", "redis-pass")
 	t.Setenv("REDIS_DB", "2")
-	t.Setenv("OCTOPUS_BASE_URL", "http://octopus.local")
-	t.Setenv("OCTOPUS_ADMIN_USERNAME", "octo-admin")
-	t.Setenv("OCTOPUS_ADMIN_PASSWORD", "octo-pass")
-	t.Setenv("OCTOPUS_REQUEST_TIMEOUT", "4s")
-	t.Setenv("OCTOPUS_PROXY_REQUEST_TIMEOUT", "45s")
-	t.Setenv("HEIMDALL_GRPC_ADDR", "heimdall:9090")
-	t.Setenv("HEIMDALL_GRPC_TIMEOUT", "1500ms")
-	t.Setenv("HEIMDALL_SERVICE_TOKEN", "heimdall-service-token")
-	t.Setenv("HEIMDALL_TOKEN_TYPE", "access_token")
-	t.Setenv("HEIMDALL_ADMIN_USER_IDS", "admin-1, admin-2")
 	t.Setenv("JWT_SECRET", "0123456789abcdef0123456789abcdef")
 	t.Setenv("JWT_ACCESS_TOKEN_TTL", "2h")
 	t.Setenv("JWT_MIN_SECRET_BYTES", "48")
 	t.Setenv("AUTH_BCRYPT_COST", "12")
+	t.Setenv("SUPER_ADMIN_KEY", "bootstrap-secret")
 	t.Setenv("POST_TITLE_MAX_LENGTH", "150")
 	t.Setenv("POST_CONTENT_MAX_LENGTH", "5000")
 	t.Setenv("COMMENT_CONTENT_MAX_LENGTH", "700")
+	t.Setenv("USER_DEFAULT_LIMIT", "10")
+	t.Setenv("USER_MAX_LIMIT", "50")
 	t.Setenv("POST_DEFAULT_LIMIT", "15")
 	t.Setenv("POST_MAX_LIMIT", "75")
 	t.Setenv("COMMENT_DEFAULT_LIMIT", "30")
@@ -220,24 +180,11 @@ func TestLoadReadsTopLevelSettings(t *testing.T) {
 	if C.Redis.Addr != "redis:6379" || C.Redis.Password != "redis-pass" || C.Redis.DB != 2 {
 		t.Fatalf("unexpected redis config: %+v", C.Redis)
 	}
-	if C.Octopus.BaseURL != "http://octopus.local" ||
-		C.Octopus.AdminUsername != "octo-admin" ||
-		C.Octopus.AdminPassword != "octo-pass" ||
-		C.Octopus.RequestTimeout != 4*time.Second ||
-		C.Octopus.ProxyRequestTimeout != 45*time.Second {
-		t.Fatalf("unexpected octopus config: %+v", C.Octopus)
-	}
-	if C.Heimdall.GRPCAddr != "heimdall:9090" ||
-		C.Heimdall.GRPCTimeout != 1500*time.Millisecond ||
-		C.Heimdall.ServiceToken != "heimdall-service-token" ||
-		C.Heimdall.TokenType != "access_token" ||
-		len(C.Heimdall.AdminUserIDs) != 2 {
-		t.Fatalf("unexpected heimdall config: %+v", C.Heimdall)
-	}
 	if C.Auth.JWTSecret != "0123456789abcdef0123456789abcdef" ||
 		C.Auth.AccessTokenTTL != 2*time.Hour ||
 		C.Auth.JWTMinSecretBytes != 48 ||
-		C.Auth.BcryptCost != 12 {
+		C.Auth.BcryptCost != 12 ||
+		C.Auth.SuperAdminKey != "bootstrap-secret" {
 		t.Fatalf("unexpected auth config: %+v", C.Auth)
 	}
 	if C.Validation.PostTitleMaxLength != 150 ||
@@ -245,7 +192,9 @@ func TestLoadReadsTopLevelSettings(t *testing.T) {
 		C.Validation.CommentContentMaxLength != 700 {
 		t.Fatalf("unexpected validation config: %+v", C.Validation)
 	}
-	if C.Pagination.PostDefaultLimit != 15 ||
+	if C.Pagination.UserDefaultLimit != 10 ||
+		C.Pagination.UserMaxLimit != 50 ||
+		C.Pagination.PostDefaultLimit != 15 ||
 		C.Pagination.PostMaxLimit != 75 ||
 		C.Pagination.CommentDefaultLimit != 30 ||
 		C.Pagination.CommentMaxLimit != 90 {
@@ -256,95 +205,5 @@ func TestLoadReadsTopLevelSettings(t *testing.T) {
 	}
 	if C.Usage.ReconcileInterval != time.Minute {
 		t.Fatalf("unexpected usage config: %+v", C.Usage)
-	}
-}
-
-// ── Heimdall config ──────────────────────────────────────────────────────────
-
-func clearHeimdallEnv(t *testing.T) {
-	t.Helper()
-	for _, k := range []string{
-		"HEIMDALL_BYPASS", "HEIMDALL_GRPC_ADDR", "HEIMDALL_GRPC_TIMEOUT",
-		"HEIMDALL_SERVICE_TOKEN", "HEIMDALL_TOKEN_TYPE",
-		"HEIMDALL_ADMIN_USER_IDS", "APP_ENV",
-	} {
-		t.Setenv(k, "")
-	}
-}
-
-func TestLoadHeimdallConfig_BypassSkipsKeyResolution(t *testing.T) {
-	clearHeimdallEnv(t)
-	t.Setenv("HEIMDALL_BYPASS", "true")
-	t.Setenv("APP_ENV", "development")
-
-	cfg := loadHeimdallConfig()
-	if !cfg.Bypass {
-		t.Fatal("expected Bypass=true")
-	}
-	if cfg.GRPCAddr != "" {
-		t.Fatal("bypass should not require a grpc address")
-	}
-}
-
-func TestLoadHeimdallConfig_BypassInProductionPanics(t *testing.T) {
-	clearHeimdallEnv(t)
-	t.Setenv("HEIMDALL_BYPASS", "true")
-	t.Setenv("APP_ENV", "production")
-	defer func() {
-		if r := recover(); r == nil {
-			t.Fatal("expected panic when bypass enabled in production")
-		}
-	}()
-	loadHeimdallConfig()
-}
-
-func TestLoadHeimdallConfig_RequiresGRPCAddress(t *testing.T) {
-	clearHeimdallEnv(t)
-	defer func() {
-		if r := recover(); r == nil {
-			t.Fatal("expected panic when grpc address is missing")
-		} else if !strings.Contains(strings.ToLower(r.(string)), "grpc address") {
-			t.Fatalf("unexpected panic message: %v", r)
-		}
-	}()
-	loadHeimdallConfig()
-}
-
-func TestLoadHeimdallConfig_ReadsGRPCSettings(t *testing.T) {
-	clearHeimdallEnv(t)
-	t.Setenv("HEIMDALL_GRPC_ADDR", "heimdall:9090")
-	t.Setenv("HEIMDALL_GRPC_TIMEOUT", "3s")
-	t.Setenv("HEIMDALL_SERVICE_TOKEN", "svc-secret")
-	t.Setenv("HEIMDALL_TOKEN_TYPE", "redirect_platform_token")
-	t.Setenv("HEIMDALL_ADMIN_USER_IDS", " admin-1,admin-2 ,, ")
-
-	cfg := loadHeimdallConfig()
-	if cfg.GRPCAddr != "heimdall:9090" {
-		t.Fatalf("grpc addr not preserved: %q", cfg.GRPCAddr)
-	}
-	if cfg.GRPCTimeout != 3*time.Second {
-		t.Fatalf("timeout not parsed: %v", cfg.GRPCTimeout)
-	}
-	if cfg.ServiceToken != "svc-secret" {
-		t.Fatalf("service token not preserved: %q", cfg.ServiceToken)
-	}
-	if cfg.TokenType != "redirect_platform_token" {
-		t.Fatalf("token type not preserved: %q", cfg.TokenType)
-	}
-	if len(cfg.AdminUserIDs) != 2 || cfg.AdminUserIDs[0] != "admin-1" || cfg.AdminUserIDs[1] != "admin-2" {
-		t.Fatalf("admin user ids not parsed: %v", cfg.AdminUserIDs)
-	}
-}
-
-func TestLoadHeimdallConfig_AppliesDefaults(t *testing.T) {
-	clearHeimdallEnv(t)
-	t.Setenv("HEIMDALL_GRPC_ADDR", "heimdall:9090")
-
-	cfg := loadHeimdallConfig()
-	if cfg.GRPCTimeout != 5*time.Second {
-		t.Fatalf("default GRPCTimeout wrong: %v", cfg.GRPCTimeout)
-	}
-	if cfg.TokenType != "access_token" {
-		t.Fatalf("default TokenType wrong: %q", cfg.TokenType)
 	}
 }

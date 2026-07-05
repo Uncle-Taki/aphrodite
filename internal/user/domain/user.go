@@ -39,6 +39,14 @@ type UserDTO struct {
 	Now          time.Time
 }
 
+type UpdateDTO struct {
+	Username    string
+	Email       string
+	PhoneNumber *string
+	Role        Role
+	Now         time.Time
+}
+
 func NewUser(dto UserDTO) (*User, error) {
 	username := strings.TrimSpace(dto.Username)
 	email := strings.ToLower(strings.TrimSpace(dto.Email))
@@ -75,6 +83,47 @@ func NewUser(dto UserDTO) (*User, error) {
 		CreatedAt:    dto.Now,
 		UpdatedAt:    dto.Now,
 	}, nil
+}
+
+func (u *User) Update(dto UpdateDTO) error {
+	username := strings.TrimSpace(dto.Username)
+	email := strings.ToLower(strings.TrimSpace(dto.Email))
+
+	if username == "" {
+		return ErrInvalidUsername
+	}
+	if !looksLikeEmail(email) {
+		return ErrInvalidEmail
+	}
+	if !dto.Role.Valid() {
+		return ErrInvalidRole
+	}
+
+	phone := dto.PhoneNumber
+	if phone != nil {
+		trimmed := strings.TrimSpace(*phone)
+		if trimmed == "" {
+			phone = nil
+		} else {
+			phone = &trimmed
+		}
+	}
+
+	u.Username = username
+	u.Email = email
+	u.PhoneNumber = phone
+	u.Role = dto.Role
+	u.UpdatedAt = dto.Now
+	return nil
+}
+
+func (u *User) ChangePassword(passwordHash string, now time.Time) error {
+	if passwordHash == "" {
+		return ErrInvalidPasswordHash
+	}
+	u.PasswordHash = passwordHash
+	u.UpdatedAt = now
+	return nil
 }
 
 func looksLikeEmail(s string) bool {

@@ -9,16 +9,35 @@ import (
 )
 
 type RegisterRequest struct {
-	Username    string  `json:"username" binding:"required" example:"alice"`
-	Email       string  `json:"email" binding:"required" example:"alice@example.com"`
-	Password    string  `json:"password" binding:"required" example:"correct-horse-battery-staple"`
-	PhoneNumber *string `json:"phone_number,omitempty" example:"+15551234567"`
-	Role        string  `json:"role,omitempty" enums:"user,admin" example:"user"`
+	Username      string  `json:"username" binding:"required" example:"alice"`
+	Email         string  `json:"email" binding:"required" example:"alice@example.com"`
+	Password      string  `json:"password" binding:"required" example:"correct-horse-battery-staple"`
+	PhoneNumber   *string `json:"phone_number,omitempty" example:"+15551234567"`
+	Role          string  `json:"role,omitempty" enums:"user,admin" example:"user"`
+	SuperAdminKey string  `json:"super_admin_key,omitempty" example:"bootstrap-secret"`
 }
 
 type AuthenticateRequest struct {
 	Identifier string `json:"identifier" binding:"required" example:"alice"`
 	Password   string `json:"password" binding:"required" example:"correct-horse-battery-staple"`
+}
+
+type UpdateMeRequest struct {
+	Username    string  `json:"username" binding:"required" example:"alice"`
+	Email       string  `json:"email" binding:"required" example:"alice@example.com"`
+	PhoneNumber *string `json:"phone_number,omitempty" example:"+15551234567"`
+}
+
+type AdminUpdateUserRequest struct {
+	Username    string  `json:"username" binding:"required" example:"alice"`
+	Email       string  `json:"email" binding:"required" example:"alice@example.com"`
+	PhoneNumber *string `json:"phone_number,omitempty" example:"+15551234567"`
+	Role        string  `json:"role,omitempty" enums:"user,admin" example:"user"`
+}
+
+type ChangePasswordRequest struct {
+	CurrentPassword string `json:"current_password" binding:"required" example:"correct-horse-battery-staple"`
+	NewPassword     string `json:"new_password" binding:"required" example:"new-correct-horse-battery-staple"`
 }
 
 type UserResponse struct {
@@ -29,6 +48,13 @@ type UserResponse struct {
 	Role        string    `json:"role" enums:"user,admin"`
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+type UserListResponse struct {
+	Users []UserResponse `json:"users"`
+	Total int64          `json:"total"`
+	Limit int            `json:"limit"`
+	Page  int            `json:"page"`
 }
 
 type AuthenticateResponse struct {

@@ -10,8 +10,6 @@ import (
 	"aphrodite/internal/user/usecase"
 )
 
-const DefaultCost = bcrypt.DefaultCost
-
 type BcryptHasher struct {
 	cost int
 }
@@ -20,7 +18,7 @@ var _ usecase.PasswordHasher = (*BcryptHasher)(nil)
 
 func NewBcryptHasher(cost int) *BcryptHasher {
 	if cost < bcrypt.MinCost || cost > bcrypt.MaxCost {
-		cost = DefaultCost
+		cost = bcrypt.DefaultCost
 	}
 	return &BcryptHasher{cost: cost}
 }

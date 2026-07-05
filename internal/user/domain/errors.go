@@ -11,4 +11,5 @@ var (
 	ErrNotFound          = errors.New("user: not found")
 	ErrAlreadyExists     = errors.New("user: username or email already in use")
 	ErrInvalidCredential = errors.New("user: invalid credentials")
+	ErrForbidden         = errors.New("user: caller is not permitted to perform this action")
 )

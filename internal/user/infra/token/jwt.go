@@ -1,4 +1,3 @@
-// Package token holds adapters for the usecase.TokenIssuer port.
 package token
 
 import (
@@ -18,15 +17,15 @@ import (
 )
 
 const (
-	jwtAlgorithm      = "HS256"
-	jwtType           = "JWT"
-	minJWTSecretBytes = 32
+	jwtAlgorithm = "HS256"
+	jwtType      = "JWT"
 )
 
 type JWT struct {
-	secret []byte
-	ttl    time.Duration
-	now    func() time.Time
+	secret         []byte
+	ttl            time.Duration
+	minSecretBytes int
+	now            func() time.Time
 }
 
 type jwtHeader struct {
@@ -43,21 +42,27 @@ type jwtClaims struct {
 
 var _ usecase.TokenIssuer = (*JWT)(nil)
 
-func NewJWT(secret string, ttl time.Duration) (*JWT, error) {
-	return newJWT(secret, ttl, time.Now)
+type JWTConfig struct {
+	Secret         string
+	TTL            time.Duration
+	MinSecretBytes int
 }
 
-func newJWT(secret string, ttl time.Duration, now func() time.Time) (*JWT, error) {
-	if len([]byte(secret)) < minJWTSecretBytes {
-		return nil, fmt.Errorf("jwt secret must be at least %d bytes", minJWTSecretBytes)
+func NewJWT(config JWTConfig) (*JWT, error) {
+	return newJWT(config, time.Now)
+}
+
+func newJWT(config JWTConfig, now func() time.Time) (*JWT, error) {
+	if len([]byte(config.Secret)) < config.MinSecretBytes {
+		return nil, fmt.Errorf("jwt secret must be at least %d bytes", config.MinSecretBytes)
 	}
-	if ttl <= 0 {
+	if config.TTL <= 0 {
 		return nil, fmt.Errorf("jwt ttl must be positive")
 	}
 	if now == nil {
 		now = time.Now
 	}
-	return &JWT{secret: []byte(secret), ttl: ttl, now: now}, nil
+	return &JWT{secret: []byte(config.Secret), ttl: config.TTL, minSecretBytes: config.MinSecretBytes, now: now}, nil
 }
 
 func (j *JWT) Issue(_ context.Context, u *domain.User) (string, error) {

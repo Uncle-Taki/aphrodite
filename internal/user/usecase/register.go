@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"crypto/subtle"
 	"errors"
 	"log/slog"
 	"time"
@@ -12,34 +13,40 @@ import (
 )
 
 type RegisterInput struct {
-	Username    string
-	Email       string
-	Password    string
-	PhoneNumber *string
-	Role        domain.Role
+	Username      string
+	Email         string
+	Password      string
+	PhoneNumber   *string
+	Role          domain.Role
+	SuperAdminKey string
 }
 
 type RegisterUser struct {
-	repo   UserRepository
-	hasher PasswordHasher
-	newID  func() uuid.UUID
-	now    func() time.Time
+	repo          UserRepository
+	hasher        PasswordHasher
+	superAdminKey string
+	newID         func() uuid.UUID
+	now           func() time.Time
 }
 
-func NewRegisterUser(repo UserRepository, hasher PasswordHasher, newID func() uuid.UUID, now func() time.Time) *RegisterUser {
+func NewRegisterUser(repo UserRepository, hasher PasswordHasher, superAdminKey string, newID func() uuid.UUID, now func() time.Time) *RegisterUser {
 	if newID == nil {
 		newID = uuid.New
 	}
 	if now == nil {
 		now = time.Now
 	}
-	return &RegisterUser{repo: repo, hasher: hasher, newID: newID, now: now}
+	return &RegisterUser{repo: repo, hasher: hasher, superAdminKey: superAdminKey, newID: newID, now: now}
 }
 
 func (uc *RegisterUser) Execute(ctx context.Context, in RegisterInput) (*domain.User, error) {
 	role := in.Role
 	if role == "" {
 		role = domain.RoleUser
+	}
+	if role == domain.RoleAdmin && !uc.validSuperAdminKey(in.SuperAdminKey) {
+		slog.WarnContext(ctx, "user: admin registration forbidden")
+		return nil, domain.ErrForbidden
 	}
 	if in.Password == "" {
 		return nil, domain.ErrInvalidCredential
@@ -74,4 +81,11 @@ func (uc *RegisterUser) Execute(ctx context.Context, in RegisterInput) (*domain.
 
 	slog.InfoContext(ctx, "user: registered", "user_id", u.ID, "username", u.Username, "role", u.Role)
 	return u, nil
+}
+
+func (uc *RegisterUser) validSuperAdminKey(candidate string) bool {
+	if uc.superAdminKey == "" || candidate == "" {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(candidate), []byte(uc.superAdminKey)) == 1
 }
