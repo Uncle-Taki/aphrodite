@@ -98,3 +98,26 @@ func TestRunWithDeps_PostgresFailureExitsNonZero(t *testing.T) {
 		t.Fatal("expected non-zero exit on postgres failure")
 	}
 }
+
+func TestRunWithDeps_AutoMigrateFailureExitsNonZero(t *testing.T) {
+	origConfig := config.C
+	t.Cleanup(func() { config.C = origConfig })
+
+	deps := runDeps{
+		loadConfig: func() { config.C = config.Config{Env: "test", Port: "0"} },
+		initLogger: func(bool) {},
+		connectPostgres: func(config.DatabaseConfig) (*gorm.DB, error) {
+			return gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+		},
+		autoMigrate: func(*gorm.DB) error { return errors.New("schema unavailable") },
+		newRedis:    func(config.RedisConfig) (redisPinger, error) { return stubRedis{}, nil },
+		listenAndServe: func(*http.Server) error {
+			t.Fatal("server should not start after AutoMigrate failure")
+			return nil
+		},
+	}
+
+	if code := runWithDeps(deps); code == 0 {
+		t.Fatal("expected non-zero exit on AutoMigrate failure")
+	}
+}

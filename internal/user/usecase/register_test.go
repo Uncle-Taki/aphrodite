@@ -85,3 +85,14 @@ func TestRegisterUser_AllowsAdminWithSuperAdminKey(t *testing.T) {
 		t.Fatalf("role not set to admin: %+v", got)
 	}
 }
+
+func TestRegisterUser_RejectsUnknownRoleBeforePrivilegeCheck(t *testing.T) {
+	uc := NewRegisterUser(newUserMemoryRepo(), fakePasswordHasher{}, "bootstrap-secret", nil, nil)
+	_, err := uc.Execute(context.Background(), RegisterInput{
+		Username: "alice", Email: "alice@example.com", Password: "password", Role: domain.Role("owner"),
+		SuperAdminKey: "bootstrap-secret",
+	})
+	if !errors.Is(err, domain.ErrInvalidRole) {
+		t.Fatalf("expected invalid role, got %v", err)
+	}
+}
