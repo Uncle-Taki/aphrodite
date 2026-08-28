@@ -163,6 +163,53 @@ func TestUpdateUser_AdminCanUpdateRole(t *testing.T) {
 	}
 }
 
+func TestUpdateUser_AdminCanDisableAndReenableUser(t *testing.T) {
+	targetID := uuid.New()
+	repo := newUserMemoryRepo(testUser(targetID, domain.RoleUser))
+	uc := NewUpdateUser(repo, time.Now)
+	disabled := true
+	got, err := uc.Execute(context.Background(), UpdateInput{
+		TargetID: targetID, CallerID: uuid.New(), CallerRole: string(domain.RoleAdmin),
+		Username: "alice", Email: "alice@example.com", Disabled: &disabled,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.Disabled {
+		t.Fatal("expected account to be disabled")
+	}
+
+	enabled := false
+	got, err = uc.Execute(context.Background(), UpdateInput{
+		TargetID: targetID, CallerID: uuid.New(), CallerRole: string(domain.RoleAdmin),
+		Username: "alice", Email: "alice@example.com", Disabled: &enabled,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Disabled {
+		t.Fatal("expected account to be re-enabled")
+	}
+}
+
+func TestUpdateUser_NilDisabledPreservesState(t *testing.T) {
+	targetID := uuid.New()
+	u := testUser(targetID, domain.RoleUser)
+	u.Disabled = true
+	repo := newUserMemoryRepo(u)
+	uc := NewUpdateUser(repo, time.Now)
+	got, err := uc.Execute(context.Background(), UpdateInput{
+		TargetID: targetID, CallerID: uuid.New(), CallerRole: string(domain.RoleAdmin),
+		Username: "alice", Email: "alice@example.com",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.Disabled {
+		t.Fatal("nil disabled update should preserve state")
+	}
+}
+
 func TestUpdateUser_RejectsOtherUser(t *testing.T) {
 	targetID := uuid.New()
 	repo := newUserMemoryRepo(testUser(targetID, domain.RoleUser))
