@@ -4,14 +4,99 @@ services:
       context: ..
       dockerfile: build/Dockerfile
       target: runtime
+      args:
+        GOPROXY: ${GOPROXY:-https://proxy.golang.org,direct}
     ports:
       - "${APP_PORT:-8080}:8080"
     env_file: ../.env
     depends_on:
       postgres:
         condition: service_healthy
+      strapi:
+        condition: service_healthy
       redis:
         condition: service_healthy
+    restart: unless-stopped
+
+  worker:
+    image: aphrodite-app
+    build:
+      context: ..
+      dockerfile: build/Dockerfile
+      target: runtime
+      args:
+        GOPROXY: ${GOPROXY:-https://proxy.golang.org,direct}
+    command: ["/app/aphrodite-worker"]
+    env_file: ../.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  strapi:
+    build:
+      context: ../cms/strapi
+      dockerfile: Dockerfile
+    env_file: ../.env
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: 1337
+      APP_KEYS: ${STRAPI_APP_KEYS:-local-app-key-1,local-app-key-2,local-app-key-3,local-app-key-4}
+      API_TOKEN_SALT: ${STRAPI_API_TOKEN_SALT:-local-api-token-salt}
+      ADMIN_JWT_SECRET: ${STRAPI_ADMIN_JWT_SECRET:-local-admin-jwt-secret}
+      TRANSFER_TOKEN_SALT: ${STRAPI_TRANSFER_TOKEN_SALT:-local-transfer-token-salt}
+      ENCRYPTION_KEY: ${STRAPI_ENCRYPTION_KEY:-local-encryption-key}
+      DATABASE_CLIENT: postgres
+      DATABASE_HOST: strapi-postgres
+      DATABASE_PORT: 5432
+      DATABASE_NAME: ${STRAPI_DB_NAME:-aphrodite_strapi}
+      DATABASE_USERNAME: ${STRAPI_DB_USER:-strapi}
+      DATABASE_PASSWORD: ${STRAPI_DB_PASSWORD:-strapi_dev_password}
+      DATABASE_SSL: ${STRAPI_DB_SSL:-false}
+      STRAPI_PLUGIN_I18N_INIT_LOCALE_CODE: ${STRAPI_DEFAULT_LOCALE:-fa}
+      STRAPI_TELEMETRY_DISABLED: ${STRAPI_TELEMETRY_DISABLED:-true}
+      STRAPI_UPLOAD_PROVIDER: ${STRAPI_UPLOAD_PROVIDER:-aws-s3}
+      S3_ENDPOINT: ${MEDIA_ENDPOINT:-http://minio:9000}
+      S3_REGION: ${MEDIA_REGION:-us-east-1}
+      S3_BUCKET: ${MEDIA_BUCKET:-aphrodite-media}
+      S3_ACCESS_KEY_ID: ${MEDIA_ACCESS_KEY:-minioadmin}
+      S3_SECRET_ACCESS_KEY: ${MEDIA_SECRET_KEY:-minioadmin}
+      S3_FORCE_PATH_STYLE: ${MEDIA_FORCE_PATH_STYLE:-true}
+      S3_PUBLIC_BASE_URL: ${MEDIA_PUBLIC_BASE_URL:-http://localhost:9000/aphrodite-media}
+    ports:
+      - "${STRAPI_PORT:-1337}:1337"
+    depends_on:
+      strapi-postgres:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://localhost:1337/_health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))\""]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
+  strapi-postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${STRAPI_DB_USER:-strapi}
+      POSTGRES_PASSWORD: ${STRAPI_DB_PASSWORD:-strapi_dev_password}
+      POSTGRES_DB: ${STRAPI_DB_NAME:-aphrodite_strapi}
+    volumes:
+      - strapi_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "PGPASSWORD=$$POSTGRES_PASSWORD pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
     restart: unless-stopped
 
   postgres:
@@ -35,5 +120,61 @@ services:
       retries: 5
     restart: unless-stopped
 
+  minio:
+    image: minio/minio:RELEASE.2025-02-28T09-55-16Z
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Create the bucket before Strapi starts. MinIO does not create buckets
+  # automatically when an S3 client first uploads an object.
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
+      MEDIA_BUCKET: ${MEDIA_BUCKET:-aphrodite-media}
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        mc alias set local http://minio:9000 "$${MINIO_ACCESS_KEY}"
+        "$${MINIO_SECRET_KEY}" && mc mb --ignore-existing
+        "local/$${MEDIA_BUCKET}"
+
+  imgproxy:
+    image: darthsim/imgproxy:v3.29.0
+    environment:
+      IMGPROXY_USE_S3: "true"
+      IMGPROXY_S3_ENDPOINT: http://minio:9000
+      IMGPROXY_S3_REGION: us-east-1
+      IMGPROXY_S3_ACCESS_KEY_ID: ${MINIO_ACCESS_KEY:-minioadmin}
+      IMGPROXY_S3_SECRET_ACCESS_KEY: ${MINIO_SECRET_KEY:-minioadmin}
+      IMGPROXY_KEY: ${IMGPROXY_KEY:-}
+      IMGPROXY_SALT: ${IMGPROXY_SALT:-}
+    ports:
+      - "8081:8080"
+    depends_on:
+      minio:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
 volumes:
   postgres_data:
+  strapi_postgres_data:
+  minio_data:

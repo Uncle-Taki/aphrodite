@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"strings"
 
 	"aphrodite/internal/user/domain"
 )
@@ -42,6 +43,11 @@ func (uc *AuthenticateUser) Execute(ctx context.Context, in AuthenticateInput) (
 		slog.ErrorContext(ctx, "user: authenticate lookup failed", "err", err)
 		return nil, err
 	}
+	// Editors authenticate through the CMS session flow. They must not receive
+	// an application bearer token that could authorize post/comment routes.
+	if u.Disabled || u.Role == domain.RoleEditor {
+		return nil, domain.ErrInvalidCredential
+	}
 
 	if err := uc.hasher.Verify(ctx, u.PasswordHash, in.Password); err != nil {
 		return nil, domain.ErrInvalidCredential
@@ -58,6 +64,7 @@ func (uc *AuthenticateUser) Execute(ctx context.Context, in AuthenticateInput) (
 }
 
 func (uc *AuthenticateUser) lookup(ctx context.Context, identifier string) (*domain.User, error) {
+	identifier = strings.TrimSpace(identifier)
 	u, err := uc.repo.FindByUsername(ctx, identifier)
 	if err == nil {
 		return u, nil
@@ -65,5 +72,5 @@ func (uc *AuthenticateUser) lookup(ctx context.Context, identifier string) (*dom
 	if !errors.Is(err, domain.ErrNotFound) {
 		return nil, err
 	}
-	return uc.repo.FindByEmail(ctx, identifier)
+	return uc.repo.FindByEmail(ctx, strings.ToLower(identifier))
 }

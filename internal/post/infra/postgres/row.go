@@ -11,11 +11,18 @@ import (
 type postRow struct {
 	ID        uuid.UUID `gorm:"type:uuid;primaryKey"`
 	AuthorID  uuid.UUID `gorm:"type:uuid;index;not null"`
+	Author    userRef   `gorm:"foreignKey:AuthorID;references:ID"`
 	Title     string    `gorm:"type:varchar(200);not null"`
 	Content   string    `gorm:"type:text;not null"`
 	CreatedAt time.Time `gorm:"index;not null"`
 	UpdatedAt time.Time `gorm:"not null"`
 }
+
+type userRef struct {
+	ID uuid.UUID `gorm:"type:uuid;primaryKey"`
+}
+
+func (userRef) TableName() string { return "users" }
 
 func (postRow) TableName() string { return "posts" }
 

@@ -1,0 +1,7 @@
+node_modules/
+.tmp/
+.cache/
+build/
+.env
+.env.*
+!.env.example

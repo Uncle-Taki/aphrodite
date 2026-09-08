@@ -1,0 +1,27 @@
+{
+  "kind": "collectionType",
+  "collectionName": "recipes",
+  "info": { "singularName": "recipe", "pluralName": "recipes", "displayName": "Recipe" },
+  "options": { "draftAndPublish": true },
+  "pluginOptions": { "i18n": { "localized": true } },
+  "attributes": {
+    "title": { "type": "string", "required": true, "maxLength": 200, "pluginOptions": { "i18n": { "localized": true } } },
+    "slug": { "type": "uid", "targetField": "title", "required": true, "pluginOptions": { "i18n": { "localized": true } } },
+    "summary": { "type": "text", "maxLength": 1000, "pluginOptions": { "i18n": { "localized": true } } },
+    "body": { "type": "richtext", "pluginOptions": { "i18n": { "localized": true } } },
+    "ingredients": { "type": "json", "required": true, "pluginOptions": { "i18n": { "localized": true } } },
+    "steps": { "type": "json", "required": true, "pluginOptions": { "i18n": { "localized": true } } },
+    "prepMinutes": { "type": "integer", "min": 0 },
+    "cookMinutes": { "type": "integer", "min": 0 },
+    "totalMinutes": { "type": "integer", "min": 0 },
+    "servings": { "type": "integer", "min": 1 },
+    "difficulty": { "type": "enumeration", "enum": ["easy", "medium", "hard"] },
+    "heroImage": { "type": "media", "multiple": false, "allowedTypes": ["images"] },
+    "author": { "type": "relation", "relation": "manyToOne", "target": "api::author.author", "inversedBy": "recipes" },
+    "mainCategory": { "type": "relation", "relation": "manyToOne", "target": "api::main-category.main-category", "inversedBy": "recipes" },
+    "subCategories": { "type": "relation", "relation": "manyToMany", "target": "api::sub-category.sub-category", "inversedBy": "recipes" },
+    "products": { "type": "relation", "relation": "manyToMany", "target": "api::product.product", "inversedBy": "recipes" },
+    "affiliateLinks": { "type": "relation", "relation": "manyToMany", "target": "api::affiliate-link.affiliate-link", "inversedBy": "recipes" },
+    "seo": { "type": "component", "repeatable": false, "component": "seo.seo" }
+  }
+}

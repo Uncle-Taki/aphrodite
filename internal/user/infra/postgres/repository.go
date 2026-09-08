@@ -82,6 +82,7 @@ func (r *Repository) Update(ctx context.Context, u *domain.User) error {
 			"password_hash": u.PasswordHash,
 			"phone_number":  u.PhoneNumber,
 			"role":          string(u.Role),
+			"disabled":      u.Disabled,
 			"updated_at":    u.UpdatedAt,
 		})
 	if res.Error != nil {

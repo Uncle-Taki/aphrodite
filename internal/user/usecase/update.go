@@ -19,6 +19,10 @@ type UpdateInput struct {
 	Email       string
 	PhoneNumber *string
 	Role        domain.Role
+	// Disabled is only honored for administrators. A nil value preserves the
+	// existing state, allowing PATCH-like admin updates without enabling a
+	// previously disabled account accidentally.
+	Disabled *bool
 }
 
 type UpdateUser struct {
@@ -49,12 +53,17 @@ func (uc *UpdateUser) Execute(ctx context.Context, in UpdateInput) (*domain.User
 	if in.CallerRole == string(domain.RoleAdmin) && in.Role != "" {
 		role = in.Role
 	}
+	disabled := u.Disabled
+	if in.CallerRole == string(domain.RoleAdmin) && in.Disabled != nil {
+		disabled = *in.Disabled
+	}
 
 	if err := u.Update(domain.UpdateDTO{
 		Username:    in.Username,
 		Email:       in.Email,
 		PhoneNumber: in.PhoneNumber,
 		Role:        role,
+		Disabled:    disabled,
 		Now:         uc.now(),
 	}); err != nil {
 		return nil, err

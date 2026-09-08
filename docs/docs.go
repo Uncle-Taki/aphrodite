@@ -40,6 +40,94 @@ const docTemplate = `{
                 }
             }
         },
+        "/v1/articles/{slug}": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "content"
+                ],
+                "summary": "Get an article",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Article slug",
+                        "name": "slug",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Locale (defaults to configured Persian locale)",
+                        "name": "locale",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/categories/{slug}": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "content"
+                ],
+                "summary": "Get a category",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Category slug",
+                        "name": "slug",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Locale",
+                        "name": "locale",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
         "/v1/comments/{id}": {
             "put": {
                 "security": [
@@ -168,6 +256,41 @@ const docTemplate = `{
                         "description": "Internal Server Error",
                         "schema": {
                             "$ref": "#/definitions/comment_transport_http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/newsletters/{slug}": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "content"
+                ],
+                "summary": "Get a newsletter",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Newsletter slug",
+                        "name": "slug",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Locale",
+                        "name": "locale",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
                         }
                     }
                 }
@@ -551,6 +674,76 @@ const docTemplate = `{
                         "description": "Internal Server Error",
                         "schema": {
                             "$ref": "#/definitions/comment_transport_http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/products/{slug}": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "content"
+                ],
+                "summary": "Get a product",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Product slug",
+                        "name": "slug",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Locale",
+                        "name": "locale",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/recipes/{slug}": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "content"
+                ],
+                "summary": "Get a recipe",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Recipe slug",
+                        "name": "slug",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Locale",
+                        "name": "locale",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
                         }
                     }
                 }
@@ -1063,6 +1256,10 @@ const docTemplate = `{
                 "username"
             ],
             "properties": {
+                "disabled": {
+                    "type": "boolean",
+                    "example": false
+                },
                 "email": {
                     "type": "string",
                     "example": "alice@example.com"
@@ -1075,7 +1272,8 @@ const docTemplate = `{
                     "type": "string",
                     "enum": [
                         "user",
-                        "admin"
+                        "admin",
+                        "editor"
                     ],
                     "example": "user"
                 },
@@ -1257,7 +1455,8 @@ const docTemplate = `{
                     "type": "string",
                     "enum": [
                         "user",
-                        "admin"
+                        "admin",
+                        "editor"
                     ],
                     "example": "user"
                 },
@@ -1347,6 +1546,9 @@ const docTemplate = `{
                 "created_at": {
                     "type": "string"
                 },
+                "disabled": {
+                    "type": "boolean"
+                },
                 "email": {
                     "type": "string"
                 },
@@ -1360,7 +1562,8 @@ const docTemplate = `{
                     "type": "string",
                     "enum": [
                         "user",
-                        "admin"
+                        "admin",
+                        "editor"
                     ]
                 },
                 "updated_at": {
@@ -1405,7 +1608,7 @@ var SwaggerInfo = &swag.Spec{
 	BasePath:         "/",
 	Schemes:          []string{},
 	Title:            "Aphrodite API",
-	Description:      "Simple blog backend. Users register, log in, publish posts, and comment.",
+	Description:      "Go BFF for users, business workflows, and localized Strapi editorial content.",
 	InfoInstanceName: "swagger",
 	SwaggerTemplate:  docTemplate,
 	LeftDelim:        "{{",
