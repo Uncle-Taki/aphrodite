@@ -15,6 +15,7 @@ type userRow struct {
 	PasswordHash string    `gorm:"type:varchar(255);not null"`
 	PhoneNumber  *string   `gorm:"type:varchar(32)"`
 	Role         string    `gorm:"type:varchar(16);not null;default:'user'"`
+	Disabled     bool      `gorm:"not null;default:false"`
 	CreatedAt    time.Time `gorm:"not null"`
 	UpdatedAt    time.Time `gorm:"not null"`
 }
@@ -29,6 +30,7 @@ func fromDomain(u *domain.User) userRow {
 		PasswordHash: u.PasswordHash,
 		PhoneNumber:  u.PhoneNumber,
 		Role:         string(u.Role),
+		Disabled:     u.Disabled,
 		CreatedAt:    u.CreatedAt,
 		UpdatedAt:    u.UpdatedAt,
 	}
@@ -42,6 +44,7 @@ func (r userRow) toDomain() *domain.User {
 		PasswordHash: r.PasswordHash,
 		PhoneNumber:  r.PhoneNumber,
 		Role:         domain.Role(r.Role),
+		Disabled:     r.Disabled,
 		CreatedAt:    r.CreatedAt,
 		UpdatedAt:    r.UpdatedAt,
 	}

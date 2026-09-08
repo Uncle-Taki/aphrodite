@@ -316,6 +316,7 @@ func (h *Handler) UpdateByID(c *gin.Context) {
 		Email:       req.Email,
 		PhoneNumber: req.PhoneNumber,
 		Role:        domain.Role(req.Role),
+		Disabled:    req.Disabled,
 	})
 	if err != nil {
 		mapUserError(c, err)

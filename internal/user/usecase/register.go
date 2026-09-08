@@ -44,7 +44,10 @@ func (uc *RegisterUser) Execute(ctx context.Context, in RegisterInput) (*domain.
 	if role == "" {
 		role = domain.RoleUser
 	}
-	if role == domain.RoleAdmin && !uc.validSuperAdminKey(in.SuperAdminKey) {
+	if !role.Valid() {
+		return nil, domain.ErrInvalidRole
+	}
+	if role != domain.RoleUser && !uc.validSuperAdminKey(in.SuperAdminKey) {
 		slog.WarnContext(ctx, "user: admin registration forbidden")
 		return nil, domain.ErrForbidden
 	}

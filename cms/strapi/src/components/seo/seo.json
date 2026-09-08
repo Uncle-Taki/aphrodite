@@ -1,0 +1,10 @@
+{
+  "collectionName": "components_seo_seos",
+  "info": { "displayName": "SEO" },
+  "attributes": {
+    "title": { "type": "string", "maxLength": 320, "pluginOptions": { "i18n": { "localized": true } } },
+    "description": { "type": "text", "maxLength": 1000, "pluginOptions": { "i18n": { "localized": true } } },
+    "canonicalURL": { "type": "string" },
+    "noIndex": { "type": "boolean", "default": false }
+  }
+}

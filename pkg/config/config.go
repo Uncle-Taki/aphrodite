@@ -17,6 +17,10 @@ type Config struct {
 	Port       string
 	Database   DatabaseConfig
 	Redis      RedisConfig
+	Storage    StorageConfig
+	Strapi     StrapiConfig
+	Worker     WorkerConfig
+	Session    SessionConfig
 	Auth       AuthConfig
 	Validation ValidationConfig
 	Pagination PaginationConfig
@@ -45,6 +49,47 @@ type RedisConfig struct {
 	Addr     string
 	Password string
 	DB       int
+}
+
+type StorageConfig struct {
+	Provider       string
+	Endpoint       string
+	Region         string
+	AccessKey      string
+	SecretKey      string
+	Bucket         string
+	UseSSL         bool
+	ForcePathStyle bool
+	PublicBaseURL  string
+	ImgProxyURL    string
+	ImgProxyKey    string
+	ImgProxySalt   string
+}
+
+type StrapiConfig struct {
+	BaseURL           string
+	APIToken          string
+	Timeout           time.Duration
+	ReadyTimeout      time.Duration
+	ReadyPollInterval time.Duration
+	MaxRetries        int
+	RetryBackoff      time.Duration
+	MaxRetryBackoff   time.Duration
+	DefaultLocale     string
+	FallbackLocale    string
+	CacheTTL          time.Duration
+	WebhookSecret     string
+}
+
+type WorkerConfig struct {
+	Concurrency int
+	Queue       string
+}
+
+type SessionConfig struct {
+	CookieName string
+	TTL        time.Duration
+	Secure     bool
 }
 
 type AuthConfig struct {
@@ -90,6 +135,43 @@ func Load() {
 			Addr:     getEnv("REDIS_ADDR", "localhost:6379"),
 			Password: getEnv("REDIS_PASSWORD", ""),
 			DB:       getEnvInt("REDIS_DB", 0),
+		},
+		Storage: StorageConfig{
+			Provider:       getEnv("MEDIA_PROVIDER", "minio"),
+			Endpoint:       getEnv("MEDIA_ENDPOINT", getEnv("MINIO_ENDPOINT", "localhost:9000")),
+			Region:         getEnv("MEDIA_REGION", "us-east-1"),
+			AccessKey:      getEnv("MEDIA_ACCESS_KEY", getEnv("MINIO_ACCESS_KEY", "minioadmin")),
+			SecretKey:      getEnv("MEDIA_SECRET_KEY", getEnv("MINIO_SECRET_KEY", "minioadmin")),
+			Bucket:         getEnv("MEDIA_BUCKET", getEnv("MINIO_BUCKET", "aphrodite-media")),
+			UseSSL:         getEnvBool("MEDIA_USE_SSL", getEnvBool("MINIO_USE_SSL", false)),
+			ForcePathStyle: getEnvBool("MEDIA_FORCE_PATH_STYLE", false),
+			PublicBaseURL:  getEnv("MEDIA_PUBLIC_BASE_URL", ""),
+			ImgProxyURL:    getEnv("IMGPROXY_URL", "http://localhost:8081"),
+			ImgProxyKey:    getEnv("IMGPROXY_KEY", ""),
+			ImgProxySalt:   getEnv("IMGPROXY_SALT", ""),
+		},
+		Strapi: StrapiConfig{
+			BaseURL:           getEnv("STRAPI_BASE_URL", "http://localhost:1337"),
+			APIToken:          getEnv("STRAPI_API_TOKEN", ""),
+			Timeout:           getEnvDuration("STRAPI_TIMEOUT", 3*time.Second),
+			ReadyTimeout:      getEnvDuration("STRAPI_READY_TIMEOUT", 30*time.Second),
+			ReadyPollInterval: getEnvDuration("STRAPI_READY_POLL_INTERVAL", 500*time.Millisecond),
+			MaxRetries:        getEnvInt("STRAPI_MAX_RETRIES", 2),
+			RetryBackoff:      getEnvDuration("STRAPI_RETRY_BACKOFF", 100*time.Millisecond),
+			MaxRetryBackoff:   getEnvDuration("STRAPI_MAX_RETRY_BACKOFF", 2*time.Second),
+			DefaultLocale:     getEnv("STRAPI_DEFAULT_LOCALE", "fa"),
+			FallbackLocale:    getEnv("STRAPI_FALLBACK_LOCALE", "fa"),
+			CacheTTL:          getEnvDuration("STRAPI_CACHE_TTL", 60*time.Second),
+			WebhookSecret:     getEnv("STRAPI_WEBHOOK_SECRET", ""),
+		},
+		Worker: WorkerConfig{
+			Concurrency: getEnvInt("WORKER_CONCURRENCY", 10),
+			Queue:       getEnv("WORKER_QUEUE", "default"),
+		},
+		Session: SessionConfig{
+			CookieName: getEnv("CMS_SESSION_COOKIE", "aphrodite_cms_session"),
+			TTL:        getEnvDuration("CMS_SESSION_TTL", 12*time.Hour),
+			Secure:     getEnvBool("CMS_SESSION_SECURE", false),
 		},
 		Auth: AuthConfig{
 			JWTSecret:         mustGetEnv("JWT_SECRET"),

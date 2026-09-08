@@ -1,0 +1,17 @@
+{
+  "kind": "collectionType",
+  "collectionName": "authors",
+  "info": { "singularName": "author", "pluralName": "authors", "displayName": "Author" },
+  "options": { "draftAndPublish": true },
+  "pluginOptions": { "i18n": { "localized": true } },
+  "attributes": {
+    "displayName": { "type": "string", "required": true, "maxLength": 160, "pluginOptions": { "i18n": { "localized": true } } },
+    "slug": { "type": "uid", "targetField": "displayName", "required": true, "pluginOptions": { "i18n": { "localized": true } } },
+    "bio": { "type": "richtext", "pluginOptions": { "i18n": { "localized": true } } },
+    "jobTitle": { "type": "string", "maxLength": 160, "pluginOptions": { "i18n": { "localized": true } } },
+    "avatar": { "type": "media", "multiple": false, "allowedTypes": ["images"] },
+    "socialLinks": { "type": "json" },
+    "articles": { "type": "relation", "relation": "oneToMany", "target": "api::article.article", "mappedBy": "author" },
+    "recipes": { "type": "relation", "relation": "oneToMany", "target": "api::recipe.recipe", "mappedBy": "author" }
+  }
+}

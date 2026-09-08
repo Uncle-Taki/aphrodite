@@ -1,0 +1,20 @@
+{
+  "kind": "collectionType",
+  "collectionName": "newsletters",
+  "info": { "singularName": "newsletter", "pluralName": "newsletters", "displayName": "Newsletter" },
+  "options": { "draftAndPublish": true },
+  "pluginOptions": { "i18n": { "localized": true } },
+  "attributes": {
+    "name": { "type": "string", "required": true, "maxLength": 160, "pluginOptions": { "i18n": { "localized": true } } },
+    "slug": { "type": "uid", "targetField": "name", "required": true, "pluginOptions": { "i18n": { "localized": true } } },
+    "description": { "type": "text", "maxLength": 500, "pluginOptions": { "i18n": { "localized": true } } },
+    "body": { "type": "richtext", "pluginOptions": { "i18n": { "localized": true } } },
+    "heroImage": { "type": "media", "multiple": false, "allowedTypes": ["images"] },
+    "signupURL": { "type": "string", "required": true },
+    "provider": { "type": "string", "maxLength": 80 },
+    "externalListID": { "type": "string", "maxLength": 160 },
+    "frequency": { "type": "enumeration", "enum": ["daily", "weekly", "monthly", "irregular"] },
+    "audience": { "type": "text", "pluginOptions": { "i18n": { "localized": true } } },
+    "active": { "type": "boolean", "default": true }
+  }
+}

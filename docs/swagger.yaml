@@ -27,6 +27,9 @@ definitions:
     type: object
   http.AdminUpdateUserRequest:
     properties:
+      disabled:
+        example: false
+        type: boolean
       email:
         example: alice@example.com
         type: string
@@ -37,6 +40,7 @@ definitions:
         enum:
         - user
         - admin
+        - editor
         example: user
         type: string
       username:
@@ -160,6 +164,7 @@ definitions:
         enum:
         - user
         - admin
+        - editor
         example: user
         type: string
       super_admin_key:
@@ -225,6 +230,8 @@ definitions:
     properties:
       created_at:
         type: string
+      disabled:
+        type: boolean
       email:
         type: string
       id:
@@ -235,6 +242,7 @@ definitions:
         enum:
         - user
         - admin
+        - editor
         type: string
       updated_at:
         type: string
@@ -253,7 +261,8 @@ definitions:
     type: object
 info:
   contact: {}
-  description: Simple blog backend. Users register, log in, publish posts, and comment.
+  description: Go BFF for users, business workflows, and localized Strapi editorial
+    content.
   title: Aphrodite API
   version: 0.1.0
 paths:
@@ -273,6 +282,64 @@ paths:
       summary: Health check
       tags:
       - health
+  /v1/articles/{slug}:
+    get:
+      parameters:
+      - description: Article slug
+        in: path
+        name: slug
+        required: true
+        type: string
+      - description: Locale (defaults to configured Persian locale)
+        in: query
+        name: locale
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "503":
+          description: Service Unavailable
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Get an article
+      tags:
+      - content
+  /v1/categories/{slug}:
+    get:
+      parameters:
+      - description: Category slug
+        in: path
+        name: slug
+        required: true
+        type: string
+      - description: Locale
+        in: query
+        name: locale
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Get a category
+      tags:
+      - content
   /v1/comments/{id}:
     delete:
       parameters:
@@ -358,6 +425,29 @@ paths:
       summary: Update a comment (author or admin)
       tags:
       - comments
+  /v1/newsletters/{slug}:
+    get:
+      parameters:
+      - description: Newsletter slug
+        in: path
+        name: slug
+        required: true
+        type: string
+      - description: Locale
+        in: query
+        name: locale
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Get a newsletter
+      tags:
+      - content
   /v1/posts:
     get:
       parameters:
@@ -604,6 +694,52 @@ paths:
       summary: Add a comment to a post
       tags:
       - comments
+  /v1/products/{slug}:
+    get:
+      parameters:
+      - description: Product slug
+        in: path
+        name: slug
+        required: true
+        type: string
+      - description: Locale
+        in: query
+        name: locale
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Get a product
+      tags:
+      - content
+  /v1/recipes/{slug}:
+    get:
+      parameters:
+      - description: Recipe slug
+        in: path
+        name: slug
+        required: true
+        type: string
+      - description: Locale
+        in: query
+        name: locale
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Get a recipe
+      tags:
+      - content
   /v1/users:
     get:
       parameters:

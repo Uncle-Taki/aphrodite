@@ -12,10 +12,24 @@ type commentRow struct {
 	ID        uuid.UUID `gorm:"type:uuid;primaryKey"`
 	PostID    uuid.UUID `gorm:"type:uuid;index;not null"`
 	AuthorID  uuid.UUID `gorm:"type:uuid;index;not null"`
+	Post      postRef   `gorm:"foreignKey:PostID;references:ID"`
+	Author    userRef   `gorm:"foreignKey:AuthorID;references:ID"`
 	Content   string    `gorm:"type:text;not null"`
 	CreatedAt time.Time `gorm:"index;not null"`
 	UpdatedAt time.Time `gorm:"not null"`
 }
+
+type postRef struct {
+	ID uuid.UUID `gorm:"type:uuid;primaryKey"`
+}
+
+func (postRef) TableName() string { return "posts" }
+
+type userRef struct {
+	ID uuid.UUID `gorm:"type:uuid;primaryKey"`
+}
+
+func (userRef) TableName() string { return "users" }
 
 func (commentRow) TableName() string { return "comments" }
 
