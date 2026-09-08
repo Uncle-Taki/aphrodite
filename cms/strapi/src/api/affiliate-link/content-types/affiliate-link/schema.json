@@ -1,0 +1,21 @@
+{
+  "kind": "collectionType",
+  "collectionName": "affiliate_links",
+  "info": { "singularName": "affiliate-link", "pluralName": "affiliate-links", "displayName": "Affiliate Link" },
+  "options": { "draftAndPublish": true },
+  "pluginOptions": { "i18n": { "localized": true } },
+  "attributes": {
+    "label": { "type": "string", "required": true, "maxLength": 200, "pluginOptions": { "i18n": { "localized": true } } },
+    "url": { "type": "string", "required": true },
+    "merchant": { "type": "string", "maxLength": 160 },
+    "market": { "type": "string", "maxLength": 32 },
+    "active": { "type": "boolean", "default": true },
+    "rel": { "type": "enumeration", "enum": ["sponsored", "nofollow", "sponsored nofollow"], "default": "sponsored nofollow" },
+    "startsAt": { "type": "datetime" },
+    "endsAt": { "type": "datetime" },
+    "trackingMetadata": { "type": "json" },
+    "product": { "type": "relation", "relation": "manyToOne", "target": "api::product.product", "inversedBy": "affiliateLinks" },
+    "articles": { "type": "relation", "relation": "manyToMany", "target": "api::article.article", "mappedBy": "affiliateLinks" },
+    "recipes": { "type": "relation", "relation": "manyToMany", "target": "api::recipe.recipe", "mappedBy": "affiliateLinks" }
+  }
+}

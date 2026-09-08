@@ -2,7 +2,7 @@
 //
 // @title           Aphrodite API
 // @version         0.1.0
-// @description     Simple blog backend. Users register, log in, publish posts, and comment.
+// @description     Go BFF for users, business workflows, and localized Strapi editorial content.
 // @BasePath        /
 //
 // @securityDefinitions.apikey BearerAuth
@@ -13,6 +13,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -28,6 +29,9 @@ import (
 	commentpg "aphrodite/internal/comment/infra/postgres"
 	commenttransport "aphrodite/internal/comment/transport/http"
 	commentuc "aphrodite/internal/comment/usecase"
+	"aphrodite/internal/content"
+	contentstrapi "aphrodite/internal/content/strapi"
+	contenttransport "aphrodite/internal/content/transport/http"
 	postpg "aphrodite/internal/post/infra/postgres"
 	posttransport "aphrodite/internal/post/transport/http"
 	postuc "aphrodite/internal/post/usecase"
@@ -58,6 +62,8 @@ type runDeps struct {
 	loadConfig                 func()
 	initLogger                 func(debug bool)
 	connectPostgres            func(config.DatabaseConfig) (*gorm.DB, error)
+	autoMigrate                func(*gorm.DB) error
+	waitForStrapi              func(context.Context, config.StrapiConfig) error
 	newRedis                   func(config.RedisConfig) (redisPinger, error)
 	notifyContext              func(context.Context, ...os.Signal) (context.Context, context.CancelFunc)
 	listenAndServe             func(*http.Server) error
@@ -69,6 +75,8 @@ func defaultRunDeps() runDeps {
 		loadConfig:      config.Load,
 		initLogger:      logger.Init,
 		connectPostgres: sharedpg.Connect,
+		autoMigrate:     autoMigrate,
+		waitForStrapi:   waitForStrapi,
 		newRedis: func(cfg config.RedisConfig) (redisPinger, error) {
 			return sharedredis.New(cfg)
 		},
@@ -97,17 +105,23 @@ func runWithDeps(deps runDeps) int {
 		return 1
 	}
 
-	// GORM AutoMigrate per bounded context.
-	for _, step := range []struct {
-		name string
-		fn   func() error
-	}{
-		{"user", func() error { return userpg.AutoMigrate(db) }},
-		{"post", func() error { return postpg.AutoMigrate(db) }},
-		{"comment", func() error { return commentpg.AutoMigrate(db) }},
-	} {
-		if err := step.fn(); err != nil {
-			slog.Error("automigrate failed", "context", step.name, "err", err)
+	if migrate := deps.autoMigrate; migrate != nil {
+		if err := migrate(db); err != nil {
+			slog.Error("application schema initialization failed", "err", err)
+			return 1
+		}
+	} else if err := autoMigrate(db); err != nil {
+		slog.Error("application schema initialization failed", "err", err)
+		return 1
+	}
+
+	if config.C.Strapi.BaseURL != "" {
+		wait := deps.waitForStrapi
+		if wait == nil {
+			wait = waitForStrapi
+		}
+		if err := wait(context.Background(), config.C.Strapi); err != nil {
+			slog.Error("strapi readiness failed", "err", err)
 			return 1
 		}
 	}
@@ -118,8 +132,26 @@ func runWithDeps(deps runDeps) int {
 		return 1
 	}
 
+	var contentHandler *contenttransport.Handler
+	if config.C.Strapi.BaseURL != "" {
+		contentClient, err := contentstrapi.New(contentstrapi.ConfigFromApp(config.C.Strapi))
+		if err != nil {
+			slog.Error("strapi client setup failed", "err", err)
+			return 1
+		}
+		var contentReader content.SlugReader = contentClient
+		if cache, ok := redisClient.(interface {
+			Get(context.Context, string) (string, error)
+			Set(context.Context, string, interface{}, time.Duration) error
+		}); ok {
+			contentReader = content.NewCachedSlugReader(contentClient, cache, config.C.Strapi.CacheTTL)
+		}
+		contentHandler = contenttransport.NewHandler(contentReader, config.C.Strapi.DefaultLocale, config.C.Strapi.FallbackLocale)
+	}
+
 	// ── user context ────────────────────────────────────────────────────────────
 	userRepo := userpg.New(db)
+	sessionRepo := userpg.NewSessionRepository(db)
 	hasher := usercrypto.NewBcryptHasher(config.C.Auth.BcryptCost)
 	tokens, err := usertoken.NewJWT(usertoken.JWTConfig{
 		Secret:         config.C.Auth.JWTSecret,
@@ -141,6 +173,8 @@ func runWithDeps(deps runDeps) int {
 	updateUser := useruc.NewUpdateUser(userRepo, nil)
 	changePassword := useruc.NewChangePassword(userRepo, hasher, nil)
 	userHandler := usertransport.NewHandler(registerUser, authenticateUser, getUserProfile, listUsers, updateUser, changePassword)
+	cmsSessions := useruc.NewCMSSessionManager(userRepo, hasher, sessionRepo, config.C.Session.TTL)
+	cmsHandler := usertransport.NewCMSHandler(cmsSessions, config.C.Session.CookieName, config.C.Session.TTL, config.C.Session.Secure)
 
 	// ── post context ────────────────────────────────────────────────────────────
 	postRepo := postpg.New(db)
@@ -194,6 +228,10 @@ func runWithDeps(deps runDeps) int {
 
 	v1 := r.Group("/v1")
 	usertransport.Register(v1, userHandler, tokens)
+	usertransport.RegisterCMS(v1, cmsHandler)
+	if contentHandler != nil {
+		contenttransport.RegisterRoutes(v1, contentHandler)
+	}
 	posttransport.Register(v1, postHandler, authMW)
 	commenttransport.Register(v1, commentHandler, authMW)
 
@@ -226,4 +264,20 @@ func runWithDeps(deps runDeps) int {
 	}
 	slog.Info("server stopped")
 	return 0
+}
+
+func autoMigrate(db *gorm.DB) error {
+	for _, step := range []struct {
+		name string
+		fn   func() error
+	}{
+		{"user", func() error { return userpg.AutoMigrate(db) }},
+		{"post", func() error { return postpg.AutoMigrate(db) }},
+		{"comment", func() error { return commentpg.AutoMigrate(db) }},
+	} {
+		if err := step.fn(); err != nil {
+			return fmt.Errorf("%s schema: %w", step.name, err)
+		}
+	}
+	return nil
 }

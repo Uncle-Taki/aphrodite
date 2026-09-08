@@ -47,7 +47,8 @@ RUN go mod download
 
 COPY . .
 
-RUN go build -o /out/aphrodite-api ./cmd/api
+RUN go build -o /out/aphrodite-api ./cmd/api \
+    && go build -o /out/aphrodite-worker ./cmd/worker
 
 
 # ── Runtime stage ──────────────────────────────────────────────────────────────
@@ -65,6 +66,7 @@ RUN apt update && apt install -y tzdata apt-transport-https ca-certificates \
 WORKDIR /app
 
 COPY --from=builder /out/aphrodite-api /app/aphrodite-api
+COPY --from=builder /out/aphrodite-worker /app/aphrodite-worker
 
 EXPOSE 8080
 

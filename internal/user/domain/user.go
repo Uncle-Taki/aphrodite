@@ -10,12 +10,13 @@ import (
 type Role string
 
 const (
-	RoleUser  Role = "user"
-	RoleAdmin Role = "admin"
+	RoleUser   Role = "user"
+	RoleAdmin  Role = "admin"
+	RoleEditor Role = "editor"
 )
 
 func (r Role) Valid() bool {
-	return r == RoleUser || r == RoleAdmin
+	return r == RoleUser || r == RoleAdmin || r == RoleEditor
 }
 
 type User struct {
@@ -25,6 +26,7 @@ type User struct {
 	PasswordHash string
 	PhoneNumber  *string
 	Role         Role
+	Disabled     bool
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
 }
@@ -44,6 +46,7 @@ type UpdateDTO struct {
 	Email       string
 	PhoneNumber *string
 	Role        Role
+	Disabled    bool
 	Now         time.Time
 }
 
@@ -113,6 +116,7 @@ func (u *User) Update(dto UpdateDTO) error {
 	u.Email = email
 	u.PhoneNumber = phone
 	u.Role = dto.Role
+	u.Disabled = dto.Disabled
 	u.UpdatedAt = dto.Now
 	return nil
 }

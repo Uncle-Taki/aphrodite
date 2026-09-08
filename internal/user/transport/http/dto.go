@@ -13,7 +13,7 @@ type RegisterRequest struct {
 	Email         string  `json:"email" binding:"required" example:"alice@example.com"`
 	Password      string  `json:"password" binding:"required" example:"correct-horse-battery-staple"`
 	PhoneNumber   *string `json:"phone_number,omitempty" example:"+15551234567"`
-	Role          string  `json:"role,omitempty" enums:"user,admin" example:"user"`
+	Role          string  `json:"role,omitempty" enums:"user,admin,editor" example:"user"`
 	SuperAdminKey string  `json:"super_admin_key,omitempty" example:"bootstrap-secret"`
 }
 
@@ -32,7 +32,8 @@ type AdminUpdateUserRequest struct {
 	Username    string  `json:"username" binding:"required" example:"alice"`
 	Email       string  `json:"email" binding:"required" example:"alice@example.com"`
 	PhoneNumber *string `json:"phone_number,omitempty" example:"+15551234567"`
-	Role        string  `json:"role,omitempty" enums:"user,admin" example:"user"`
+	Role        string  `json:"role,omitempty" enums:"user,admin,editor" example:"user"`
+	Disabled    *bool   `json:"disabled,omitempty" example:"false"`
 }
 
 type ChangePasswordRequest struct {
@@ -45,7 +46,8 @@ type UserResponse struct {
 	Username    string    `json:"username"`
 	Email       string    `json:"email"`
 	PhoneNumber *string   `json:"phone_number,omitempty"`
-	Role        string    `json:"role" enums:"user,admin"`
+	Role        string    `json:"role" enums:"user,admin,editor"`
+	Disabled    bool      `json:"disabled"`
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
 }
@@ -73,6 +75,7 @@ func toUserResponse(u *domain.User) UserResponse {
 		Email:       u.Email,
 		PhoneNumber: u.PhoneNumber,
 		Role:        string(u.Role),
+		Disabled:    u.Disabled,
 		CreatedAt:   u.CreatedAt,
 		UpdatedAt:   u.UpdatedAt,
 	}

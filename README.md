@@ -1,6 +1,6 @@
 # Aphrodite
 
-Aphrodite is a simple blog backend. It exposes a small, opinionated HTTP+JSON API so a front-end app (web, mobile, or SSR) can register users, publish posts, and thread comments.
+Aphrodite is a Go BFF backed by a Strapi headless CMS. It exposes a small, opinionated HTTP+JSON API so a front-end app (web, mobile, or SSR) can authenticate users and consume localized editorial content.
 
 - **Base URL (local dev):** `http://localhost:8080`
 - **API version prefix:** `/v1`
@@ -31,7 +31,7 @@ Interactive API docs (Swagger UI) are served at [`/swagger/index.html`](http://l
 
 ## Getting started
 
-The back-end is a single Go service backed by Postgres and Redis. If you're only integrating a front-end, ask your back-end teammate for the base URL — otherwise:
+The BFF uses Go-owned Postgres/Redis data and reads published articles, recipes, taxonomy, products, affiliate links, and newsletters from Strapi. The API automatically initializes its Aphrodite PostgreSQL tables with GORM AutoMigrate, while Strapi initializes its own separate PostgreSQL database. Local Compose also starts Strapi, its PostgreSQL database, and MinIO:
 
 ```bash
 cp .env.example .env      # then fill in required values
@@ -39,12 +39,28 @@ docker compose -f build/docker-compose.yaml up --build
 curl -s http://localhost:8080/healthz
 ```
 
+Content endpoints are served through the BFF; the frontend should not call Strapi directly:
+
+```text
+GET /v1/articles/{slug}?locale=fa
+GET /v1/recipes/{slug}?locale=fa
+GET /v1/categories/{slug}?locale=fa
+GET /v1/products/{slug}?locale=fa
+GET /v1/newsletters/{slug}?locale=fa
+```
+
+Strapi administration is available at `http://localhost:1337/admin`. Create the first editor account through the Strapi admin bootstrap flow and provide the BFF with a scoped `STRAPI_API_TOKEN`.
+
 If Postgres reports `password authentication failed` after changing `.env`, reset the local database volume and start again:
 
 ```bash
 docker compose -f build/docker-compose.yaml down -v
 docker compose -f build/docker-compose.yaml up --build
 ```
+
+No manual migration command is required. When switching from the previous SQL
+migration setup on a local installation, recreate the disposable PostgreSQL
+volumes so the API can initialize a fresh schema.
 
 `/healthz` returns `200` when both Postgres and Redis are reachable, `503` otherwise. Use it as your readiness probe from the front-end deployment pipeline (not from the user's browser).
 
@@ -88,8 +104,9 @@ Every user carries a `role`:
 |---|---|
 | `user` | Register, login, view/update own profile, change password, create/list/read/update/delete own posts, comment, update/delete own comments |
 | `admin` | Everything a `user` can, plus: view/update any profile, promote users to admin, update/delete any post, update/delete any comment |
+| `editor` | CMS session access for editorial workflows; cannot administer users or application-owned posts/comments |
 
-Roles default to `user`. Public registration may create an `admin` only when the request includes the configured `SUPER_ADMIN_KEY` as `super_admin_key`; after bootstrap, existing admins can promote users through `PUT /v1/users/{id}`.
+Roles default to `user`. Public registration may create an `admin` or `editor` only when the request includes the configured `SUPER_ADMIN_KEY` as `super_admin_key`; after bootstrap, existing admins can promote users through `PUT /v1/users/{id}`. Editors use CMS cookie sessions rather than application bearer tokens.
 
 ---
 
@@ -135,7 +152,7 @@ Public. Creates a new account.
 }
 ```
 
-`phone_number` and `role` are optional. `role` defaults to `"user"`. To create a bootstrap admin, send `"role": "admin"` with `"super_admin_key": "<SUPER_ADMIN_KEY>"`; otherwise admin registration returns `403`.
+`phone_number` and `role` are optional. `role` defaults to `"user"`. To create a bootstrap admin or editor, send the requested elevated role with `"super_admin_key": "<SUPER_ADMIN_KEY>"`; otherwise elevated-role registration returns `403`.
 
 **201 Created** returns the created user (no token — call `login` next).
 
@@ -485,6 +502,7 @@ The Swagger schema at `/swagger/index.html` is generated from the same Go struct
 | `email` | string | Unique, lowercased server-side |
 | `phone_number` | string \| null | Optional |
 | `role` | `"user"` \| `"admin"` | |
+| `disabled` | boolean | Account sign-in status (admin-managed) |
 | `created_at` | RFC 3339 timestamp | |
 | `updated_at` | RFC 3339 timestamp | |
 
@@ -496,8 +514,8 @@ The Swagger schema at `/swagger/index.html` is generated from the same Go struct
 | `email` | string | Required |
 | `password` | string | Required |
 | `phone_number` | string \| null | Optional |
-| `role` | `"user"` \| `"admin"` | Optional, defaults to `"user"` |
-| `super_admin_key` | string | Required only when registering an admin |
+| `role` | `"user"` \| `"admin"` \| `"editor"` | Optional, defaults to `"user"`; elevated roles require the bootstrap key |
+| `super_admin_key` | string | Required when registering an admin or editor |
 
 ### `PostResponse`
 
