@@ -84,11 +84,18 @@ func TestJWT_VerifyRejectsTamperedToken(t *testing.T) {
 	}
 }
 
+// replacementJWTChar returns a base64url char that decodes differently from
+// last when placed in the final signature position, where only the top four
+// bits of the char are significant: chars four alphabet positions apart
+// (A-D, E-H, ... w-z) decode to the same byte, so the replacement shifts by
+// sixteen positions to land in a different block.
 func replacementJWTChar(last byte) string {
-	if last == 'x' {
-		return "y"
+	const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+	idx := strings.IndexByte(alphabet, last)
+	if idx < 0 {
+		return "A"
 	}
-	return "x"
+	return string(alphabet[(idx+16)%len(alphabet)])
 }
 
 func TestJWT_VerifyRejectsWrongSecret(t *testing.T) {
