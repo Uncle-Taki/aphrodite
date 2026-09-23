@@ -13,7 +13,8 @@ import (
 )
 
 type userMemoryRepo struct {
-	users map[uuid.UUID]*domain.User
+	users   map[uuid.UUID]*domain.User
+	findErr error
 }
 
 func newUserMemoryRepo(users ...*domain.User) *userMemoryRepo {
@@ -32,6 +33,9 @@ func (r *userMemoryRepo) Create(_ context.Context, u *domain.User) error {
 }
 
 func (r *userMemoryRepo) FindByID(_ context.Context, id uuid.UUID) (*domain.User, error) {
+	if r.findErr != nil {
+		return nil, r.findErr
+	}
 	u, ok := r.users[id]
 	if !ok {
 		return nil, domain.ErrNotFound
@@ -41,6 +45,9 @@ func (r *userMemoryRepo) FindByID(_ context.Context, id uuid.UUID) (*domain.User
 }
 
 func (r *userMemoryRepo) FindByUsername(_ context.Context, username string) (*domain.User, error) {
+	if r.findErr != nil {
+		return nil, r.findErr
+	}
 	for _, u := range r.users {
 		if u.Username == username {
 			cp := *u

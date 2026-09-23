@@ -12,7 +12,8 @@ import (
 )
 
 type updatePostRepo struct {
-	posts map[uuid.UUID]*domain.Post
+	posts     map[uuid.UUID]*domain.Post
+	createErr error
 }
 
 func newUpdatePostRepo(posts ...*domain.Post) *updatePostRepo {
@@ -25,6 +26,9 @@ func newUpdatePostRepo(posts ...*domain.Post) *updatePostRepo {
 }
 
 func (r *updatePostRepo) Create(_ context.Context, p *domain.Post) error {
+	if r.createErr != nil {
+		return r.createErr
+	}
 	cp := *p
 	r.posts[p.ID] = &cp
 	return nil
