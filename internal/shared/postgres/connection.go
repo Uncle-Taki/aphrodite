@@ -10,12 +10,16 @@ import (
 )
 
 func Connect(cfg config.DatabaseConfig) (*gorm.DB, error) {
+	return connect(cfg, gorm.Open)
+}
+
+func connect(cfg config.DatabaseConfig, open func(gorm.Dialector, ...gorm.Option) (*gorm.DB, error)) (*gorm.DB, error) {
 	logLevel := gormlogger.Silent
 	if config.C.Debug {
 		logLevel = gormlogger.Info
 	}
 
-	db, err := gorm.Open(postgres.Open(cfg.DSN()), &gorm.Config{
+	db, err := open(postgres.Open(cfg.DSN()), &gorm.Config{
 		Logger: gormlogger.Default.LogMode(logLevel),
 	})
 	if err != nil {

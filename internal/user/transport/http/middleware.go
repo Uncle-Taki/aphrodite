@@ -7,6 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"aphrodite/internal/shared/httpx/authctx"
+	"aphrodite/internal/user/domain"
 	"aphrodite/internal/user/usecase"
 )
 
@@ -31,10 +32,24 @@ func AuthMiddleware(tokens usecase.TokenIssuer) gin.HandlerFunc {
 }
 
 func RequireAdmin() gin.HandlerFunc {
+	return RequireRoles(domain.RoleAdmin)
+}
+
+// RequireRoles permits a request when its authenticated caller has any of the
+// supplied Aphrodite roles. AuthMiddleware must run before this middleware.
+func RequireRoles(roles ...domain.Role) gin.HandlerFunc {
+	allowed := make(map[string]struct{}, len(roles))
+	for _, role := range roles {
+		allowed[string(role)] = struct{}{}
+	}
 	return func(c *gin.Context) {
 		caller, ok := authctx.From(c)
-		if !ok || caller.Role != "admin" {
-			writeError(c, http.StatusForbidden, "admin role required")
+		if !ok {
+			writeError(c, http.StatusForbidden, "required role not granted")
+			return
+		}
+		if _, ok := allowed[caller.Role]; !ok {
+			writeError(c, http.StatusForbidden, "required role not granted")
 			return
 		}
 		c.Next()

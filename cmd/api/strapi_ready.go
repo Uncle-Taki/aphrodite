@@ -35,21 +35,17 @@ func waitForStrapi(ctx context.Context, cfg config.StrapiConfig) error {
 }
 
 func waitForStrapiWithClient(ctx context.Context, client *http.Client, endpoint string, pollInterval time.Duration) error {
-	var lastErr error
 	for {
-		if err := strapiHealthCheck(ctx, client, endpoint); err == nil {
+		err := strapiHealthCheck(ctx, client, endpoint)
+		if err == nil {
 			return nil
-		} else {
-			lastErr = err
 		}
 
 		timer := time.NewTimer(pollInterval)
 		select {
 		case <-ctx.Done():
-			if lastErr != nil {
-				return fmt.Errorf("%s: %w", lastErr, ctx.Err())
-			}
-			return ctx.Err()
+			timer.Stop()
+			return fmt.Errorf("%s: %w", err, ctx.Err())
 		case <-timer.C:
 		}
 	}

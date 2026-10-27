@@ -41,6 +41,9 @@ func (c Config) validate() error {
 	if c.Timeout <= 0 {
 		return fmt.Errorf("strapi timeout must be positive")
 	}
+	if token := strings.TrimSpace(c.APIToken); token == "" || strings.HasPrefix(token, "replace-with-") {
+		return fmt.Errorf("strapi API token is required; create a scoped token in Strapi Admin and set STRAPI_API_TOKEN")
+	}
 	if c.MaxRetries < 0 {
 		return fmt.Errorf("strapi max retries cannot be negative")
 	}

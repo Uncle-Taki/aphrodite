@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"testing/iotest"
 	"time"
 
 	"aphrodite/internal/content"
@@ -146,6 +147,59 @@ func TestClientDoesNotRetryValidationErrors(t *testing.T) {
 	}
 }
 
+func TestClientRetriesOnlyReads(t *testing.T) {
+	for _, method := range []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete} {
+		for _, failure := range []string{"transport", "response body", "server error", "rate limit"} {
+			t.Run(method+"/"+failure, func(t *testing.T) {
+				var calls, sleeps int
+				wantErr := ErrUnavailable
+				if failure == "rate limit" {
+					wantErr = ErrRateLimited
+				}
+				c, err := newClient(Config{
+					BaseURL: "http://strapi.test", APIToken: "test-token", Timeout: time.Second, MaxRetries: 2,
+				}, &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+					calls++
+					if calls == 1 {
+						switch failure {
+						case "transport":
+							// The write may have committed before its response was lost.
+							return nil, io.ErrUnexpectedEOF
+						case "response body":
+							return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(iotest.ErrReader(io.ErrUnexpectedEOF))}, nil
+						case "server error":
+							return &http.Response{StatusCode: http.StatusBadGateway, Body: http.NoBody}, nil
+						case "rate limit":
+							return &http.Response{StatusCode: http.StatusTooManyRequests, Body: http.NoBody}, nil
+						}
+					}
+					return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{"data":[],"meta":{}}`))}, nil
+				})}, func(context.Context, time.Duration) error { sleeps++; return nil })
+				if err != nil {
+					t.Fatal(err)
+				}
+				switch method {
+				case http.MethodGet:
+					_, err = c.List(context.Background(), "articles", content.Query{})
+				case http.MethodPost:
+					_, err = c.Create(context.Background(), "articles", map[string]any{"title": "New"}, content.Query{})
+				case http.MethodPut:
+					_, err = c.Update(context.Background(), "articles", "doc-9", map[string]any{"title": "New"}, content.Query{})
+				case http.MethodDelete:
+					err = c.Delete(context.Background(), "articles", "doc-9", content.Query{})
+				}
+				if method == http.MethodGet {
+					if err != nil || calls != 2 || sleeps != 1 {
+						t.Fatalf("read should recover after retry: err=%v calls=%d sleeps=%d", err, calls, sleeps)
+					}
+				} else if !errors.Is(err, wantErr) || calls != 1 || sleeps != 0 {
+					t.Fatalf("write must not replay: err=%v want=%v calls=%d sleeps=%d", err, wantErr, calls, sleeps)
+				}
+			})
+		}
+	}
+}
+
 func TestClientMapsValidationErrorsToInvalidRequest(t *testing.T) {
 	c, closeServer := testClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
@@ -169,13 +223,20 @@ func TestClientEncodesFiltersAsStrapiV5Operators(t *testing.T) {
 	defer closeServer()
 
 	_, err := c.List(context.Background(), "articles", content.Query{
-		Filters: map[string]string{"mainCategory": "beauty"},
+		Filters: map[string]string{"slug": "hello", "mainCategory.slug": "beauty", "author.slug": "sara", "brand.slug": "example"},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := gotQuery.Get("filters[mainCategory][$eq]"); got != "beauty" {
-		t.Fatalf("expected nested $eq filter, got %q (raw %v)", got, gotQuery)
+	for key, want := range map[string]string{
+		"filters[slug][$eq]":               "hello",
+		"filters[mainCategory][slug][$eq]": "beauty",
+		"filters[author][slug][$eq]":       "sara",
+		"filters[brand][slug][$eq]":        "example",
+	} {
+		if got := gotQuery.Get(key); got != want {
+			t.Errorf("%s = %q, want %q (raw %v)", key, got, want, gotQuery)
+		}
 	}
 }
 
@@ -252,8 +313,7 @@ func TestClientDeleteUsesDocumentPath(t *testing.T) {
 	c, closeServer := testClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotMethod = r.Method
 		gotPath = r.URL.Path
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"data":{"id":9,"documentId":"doc-9"}}`))
+		w.WriteHeader(http.StatusNoContent)
 	}))
 	defer closeServer()
 
@@ -262,6 +322,27 @@ func TestClientDeleteUsesDocumentPath(t *testing.T) {
 	}
 	if gotMethod != http.MethodDelete || gotPath != "/api/main-categories/doc-9" {
 		t.Fatalf("unexpected request %s %s", gotMethod, gotPath)
+	}
+}
+
+func TestClientDeleteMapsNotFound(t *testing.T) {
+	c, closeServer := testClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"error":{"status":404,"name":"NotFoundError","message":"Not Found"}}`))
+	}))
+	defer closeServer()
+	if err := c.Delete(context.Background(), "articles", "missing", content.Query{}); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("expected ErrNotFound, got %v", err)
+	}
+}
+
+func TestClientListRejectsEmptySuccessResponse(t *testing.T) {
+	c, closeServer := testClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer closeServer()
+	if _, err := c.List(context.Background(), "articles", content.Query{}); !errors.Is(err, ErrInvalidResponse) {
+		t.Fatalf("expected ErrInvalidResponse, got %v", err)
 	}
 }
 

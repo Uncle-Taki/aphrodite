@@ -9,5 +9,6 @@ var (
 	ErrRateLimited     = errors.New("content: rate limited")
 	ErrUnavailable     = errors.New("content: unavailable")
 	ErrInvalidResponse = errors.New("content: invalid response")
+	ErrInvalidRequest  = errors.New("content: invalid request")
 	ErrConflict        = errors.New("content: conflict")
 )

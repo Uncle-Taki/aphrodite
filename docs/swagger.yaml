@@ -5,6 +5,12 @@ definitions:
       error:
         type: string
     type: object
+  content_transport_http.ErrorResponse:
+    properties:
+      error:
+        example: content not found
+        type: string
+    type: object
   handlers.HealthResponse:
     properties:
       postgres:
@@ -108,6 +114,24 @@ definitions:
         type: string
       updated_at:
         type: string
+    type: object
+  http.ContentListResponse:
+    properties:
+      items:
+        items: {}
+        type: array
+      limit:
+        example: 15
+        type: integer
+      page:
+        example: 1
+        type: integer
+      page_count:
+        example: 3
+        type: integer
+      total:
+        example: 42
+        type: integer
     type: object
   http.CreatePostRequest:
     properties:
@@ -282,6 +306,182 @@ paths:
       summary: Health check
       tags:
       - health
+  /v1/articles:
+    get:
+      parameters:
+      - description: Page number (default 1)
+        in: query
+        name: page
+        type: integer
+      - description: Page size (defaults to CONTENT_DEFAULT_LIMIT, capped by CONTENT_MAX_LIMIT)
+        in: query
+        name: pageSize
+        type: integer
+      - description: Locale (defaults to configured Persian locale)
+        in: query
+        name: locale
+        type: string
+      - description: Sort field, e.g. title:asc or createdAt:desc (repeatable)
+        in: query
+        name: sort
+        type: string
+      - description: Filter by main category slug
+        in: query
+        name: mainCategory
+        type: string
+      - description: Filter by author slug
+        in: query
+        name: author
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/http.ContentListResponse'
+        "502":
+          description: Bad Gateway
+          schema:
+            $ref: '#/definitions/content_transport_http.ErrorResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/content_transport_http.ErrorResponse'
+      summary: List articles (paginated)
+      tags:
+      - content
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Locale for the new entry (defaults to configured Persian locale)
+        in: query
+        name: locale
+        type: string
+      - description: Strapi article attributes (name, slug, content, relations)
+        in: body
+        name: request
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/content_transport_http.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/content_transport_http.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/content_transport_http.ErrorResponse'
+        "502":
+          description: Bad Gateway
+          schema:
+            $ref: '#/definitions/content_transport_http.ErrorResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/content_transport_http.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Create an article (admin only)
+      tags:
+      - content
+  /v1/articles/{id}:
+    delete:
+      parameters:
+      - description: Strapi documentId
+        in: path
+        name: id
+        required: true
+        type: string
+      responses:
+        "204":
+          description: No Content
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/content_transport_http.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/content_transport_http.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/content_transport_http.ErrorResponse'
+        "502":
+          description: Bad Gateway
+          schema:
+            $ref: '#/definitions/content_transport_http.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Delete an article (admin only)
+      tags:
+      - content
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Strapi documentId
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Locale of the entry to update
+        in: query
+        name: locale
+        type: string
+      - description: Strapi article attributes to change
+        in: body
+        name: request
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/content_transport_http.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/content_transport_http.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/content_transport_http.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/content_transport_http.ErrorResponse'
+        "502":
+          description: Bad Gateway
+          schema:
+            $ref: '#/definitions/content_transport_http.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update an article (admin or editor)
+      tags:
+      - content
   /v1/articles/{slug}:
     get:
       parameters:
@@ -305,16 +505,184 @@ paths:
         "404":
           description: Not Found
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/content_transport_http.ErrorResponse'
+        "502":
+          description: Bad Gateway
+          schema:
+            $ref: '#/definitions/content_transport_http.ErrorResponse'
         "503":
           description: Service Unavailable
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/content_transport_http.ErrorResponse'
       summary: Get an article
+      tags:
+      - content
+  /v1/categories:
+    get:
+      parameters:
+      - description: Page number (default 1)
+        in: query
+        name: page
+        type: integer
+      - description: Page size (defaults to CONTENT_DEFAULT_LIMIT, capped by CONTENT_MAX_LIMIT)
+        in: query
+        name: pageSize
+        type: integer
+      - description: Locale (defaults to configured Persian locale)
+        in: query
+        name: locale
+        type: string
+      - description: Sort field, e.g. name:asc (repeatable)
+        in: query
+        name: sort
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/http.ContentListResponse'
+        "502":
+          description: Bad Gateway
+          schema:
+            $ref: '#/definitions/content_transport_http.ErrorResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/content_transport_http.ErrorResponse'
+      summary: List categories (paginated)
+      tags:
+      - content
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Locale for the new entry (defaults to configured Persian locale)
+        in: query
+        name: locale
+        type: string
+      - description: Strapi main-category attributes (name, slug, description)
+        in: body
+        name: request
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/content_transport_http.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/content_transport_http.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/content_transport_http.ErrorResponse'
+        "502":
+          description: Bad Gateway
+          schema:
+            $ref: '#/definitions/content_transport_http.ErrorResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/content_transport_http.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Create a category (admin only)
+      tags:
+      - content
+  /v1/categories/{id}:
+    delete:
+      parameters:
+      - description: Strapi documentId
+        in: path
+        name: id
+        required: true
+        type: string
+      responses:
+        "204":
+          description: No Content
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/content_transport_http.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/content_transport_http.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/content_transport_http.ErrorResponse'
+        "502":
+          description: Bad Gateway
+          schema:
+            $ref: '#/definitions/content_transport_http.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Delete a category (admin only)
+      tags:
+      - content
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Strapi documentId
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Locale of the entry to update
+        in: query
+        name: locale
+        type: string
+      - description: Strapi main-category attributes to change
+        in: body
+        name: request
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/content_transport_http.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/content_transport_http.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/content_transport_http.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/content_transport_http.ErrorResponse'
+        "502":
+          description: Bad Gateway
+          schema:
+            $ref: '#/definitions/content_transport_http.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update a category (admin or editor)
       tags:
       - content
   /v1/categories/{slug}:
@@ -337,6 +705,18 @@ paths:
           schema:
             additionalProperties: true
             type: object
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/content_transport_http.ErrorResponse'
+        "502":
+          description: Bad Gateway
+          schema:
+            $ref: '#/definitions/content_transport_http.ErrorResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/content_transport_http.ErrorResponse'
       summary: Get a category
       tags:
       - content
@@ -425,6 +805,174 @@ paths:
       summary: Update a comment (author or admin)
       tags:
       - comments
+  /v1/newsletters:
+    get:
+      parameters:
+      - description: Page number (default 1)
+        in: query
+        name: page
+        type: integer
+      - description: Page size (defaults to CONTENT_DEFAULT_LIMIT, capped by CONTENT_MAX_LIMIT)
+        in: query
+        name: pageSize
+        type: integer
+      - description: Locale (defaults to configured Persian locale)
+        in: query
+        name: locale
+        type: string
+      - description: Sort field, e.g. subject:asc (repeatable)
+        in: query
+        name: sort
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/http.ContentListResponse'
+        "502":
+          description: Bad Gateway
+          schema:
+            $ref: '#/definitions/content_transport_http.ErrorResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/content_transport_http.ErrorResponse'
+      summary: List newsletters (paginated)
+      tags:
+      - content
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Locale for the new entry (defaults to configured Persian locale)
+        in: query
+        name: locale
+        type: string
+      - description: Strapi newsletter attributes (subject, body, heroImage)
+        in: body
+        name: request
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/content_transport_http.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/content_transport_http.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/content_transport_http.ErrorResponse'
+        "502":
+          description: Bad Gateway
+          schema:
+            $ref: '#/definitions/content_transport_http.ErrorResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/content_transport_http.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Create a newsletter (admin only)
+      tags:
+      - content
+  /v1/newsletters/{id}:
+    delete:
+      parameters:
+      - description: Strapi documentId
+        in: path
+        name: id
+        required: true
+        type: string
+      responses:
+        "204":
+          description: No Content
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/content_transport_http.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/content_transport_http.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/content_transport_http.ErrorResponse'
+        "502":
+          description: Bad Gateway
+          schema:
+            $ref: '#/definitions/content_transport_http.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Delete a newsletter (admin only)
+      tags:
+      - content
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Strapi documentId
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Locale of the entry to update
+        in: query
+        name: locale
+        type: string
+      - description: Strapi newsletter attributes to change
+        in: body
+        name: request
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/content_transport_http.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/content_transport_http.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/content_transport_http.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/content_transport_http.ErrorResponse'
+        "502":
+          description: Bad Gateway
+          schema:
+            $ref: '#/definitions/content_transport_http.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update a newsletter (admin or editor)
+      tags:
+      - content
   /v1/newsletters/{slug}:
     get:
       parameters:
@@ -445,6 +993,18 @@ paths:
           schema:
             additionalProperties: true
             type: object
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/content_transport_http.ErrorResponse'
+        "502":
+          description: Bad Gateway
+          schema:
+            $ref: '#/definitions/content_transport_http.ErrorResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/content_transport_http.ErrorResponse'
       summary: Get a newsletter
       tags:
       - content
@@ -694,6 +1254,178 @@ paths:
       summary: Add a comment to a post
       tags:
       - comments
+  /v1/products:
+    get:
+      parameters:
+      - description: Page number (default 1)
+        in: query
+        name: page
+        type: integer
+      - description: Page size (defaults to CONTENT_DEFAULT_LIMIT, capped by CONTENT_MAX_LIMIT)
+        in: query
+        name: pageSize
+        type: integer
+      - description: Locale (defaults to configured Persian locale)
+        in: query
+        name: locale
+        type: string
+      - description: Sort field, e.g. name:asc (repeatable)
+        in: query
+        name: sort
+        type: string
+      - description: Filter by brand slug
+        in: query
+        name: brand
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/http.ContentListResponse'
+        "502":
+          description: Bad Gateway
+          schema:
+            $ref: '#/definitions/content_transport_http.ErrorResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/content_transport_http.ErrorResponse'
+      summary: List products (paginated)
+      tags:
+      - content
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Locale for the new entry (defaults to configured Persian locale)
+        in: query
+        name: locale
+        type: string
+      - description: Strapi product attributes (name, slug, brand, relations)
+        in: body
+        name: request
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/content_transport_http.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/content_transport_http.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/content_transport_http.ErrorResponse'
+        "502":
+          description: Bad Gateway
+          schema:
+            $ref: '#/definitions/content_transport_http.ErrorResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/content_transport_http.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Create a product (admin only)
+      tags:
+      - content
+  /v1/products/{id}:
+    delete:
+      parameters:
+      - description: Strapi documentId
+        in: path
+        name: id
+        required: true
+        type: string
+      responses:
+        "204":
+          description: No Content
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/content_transport_http.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/content_transport_http.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/content_transport_http.ErrorResponse'
+        "502":
+          description: Bad Gateway
+          schema:
+            $ref: '#/definitions/content_transport_http.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Delete a product (admin only)
+      tags:
+      - content
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Strapi documentId
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Locale of the entry to update
+        in: query
+        name: locale
+        type: string
+      - description: Strapi product attributes to change
+        in: body
+        name: request
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/content_transport_http.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/content_transport_http.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/content_transport_http.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/content_transport_http.ErrorResponse'
+        "502":
+          description: Bad Gateway
+          schema:
+            $ref: '#/definitions/content_transport_http.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update a product (admin or editor)
+      tags:
+      - content
   /v1/products/{slug}:
     get:
       parameters:
@@ -714,7 +1446,195 @@ paths:
           schema:
             additionalProperties: true
             type: object
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/content_transport_http.ErrorResponse'
+        "502":
+          description: Bad Gateway
+          schema:
+            $ref: '#/definitions/content_transport_http.ErrorResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/content_transport_http.ErrorResponse'
       summary: Get a product
+      tags:
+      - content
+  /v1/recipes:
+    get:
+      parameters:
+      - description: Page number (default 1)
+        in: query
+        name: page
+        type: integer
+      - description: Page size (defaults to CONTENT_DEFAULT_LIMIT, capped by CONTENT_MAX_LIMIT)
+        in: query
+        name: pageSize
+        type: integer
+      - description: Locale (defaults to configured Persian locale)
+        in: query
+        name: locale
+        type: string
+      - description: Sort field, e.g. title:asc or createdAt:desc (repeatable)
+        in: query
+        name: sort
+        type: string
+      - description: Filter by main category slug
+        in: query
+        name: mainCategory
+        type: string
+      - description: Filter by author slug
+        in: query
+        name: author
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/http.ContentListResponse'
+        "502":
+          description: Bad Gateway
+          schema:
+            $ref: '#/definitions/content_transport_http.ErrorResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/content_transport_http.ErrorResponse'
+      summary: List recipes (paginated)
+      tags:
+      - content
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Locale for the new entry (defaults to configured Persian locale)
+        in: query
+        name: locale
+        type: string
+      - description: Strapi recipe attributes (title, slug, ingredients, steps, relations)
+        in: body
+        name: request
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/content_transport_http.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/content_transport_http.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/content_transport_http.ErrorResponse'
+        "502":
+          description: Bad Gateway
+          schema:
+            $ref: '#/definitions/content_transport_http.ErrorResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/content_transport_http.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Create a recipe (admin only)
+      tags:
+      - content
+  /v1/recipes/{id}:
+    delete:
+      parameters:
+      - description: Strapi documentId
+        in: path
+        name: id
+        required: true
+        type: string
+      responses:
+        "204":
+          description: No Content
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/content_transport_http.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/content_transport_http.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/content_transport_http.ErrorResponse'
+        "502":
+          description: Bad Gateway
+          schema:
+            $ref: '#/definitions/content_transport_http.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Delete a recipe (admin only)
+      tags:
+      - content
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Strapi documentId
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Locale of the entry to update
+        in: query
+        name: locale
+        type: string
+      - description: Strapi recipe attributes to change
+        in: body
+        name: request
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/content_transport_http.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/content_transport_http.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/content_transport_http.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/content_transport_http.ErrorResponse'
+        "502":
+          description: Bad Gateway
+          schema:
+            $ref: '#/definitions/content_transport_http.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update a recipe (admin or editor)
       tags:
       - content
   /v1/recipes/{slug}:
@@ -737,6 +1657,18 @@ paths:
           schema:
             additionalProperties: true
             type: object
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/content_transport_http.ErrorResponse'
+        "502":
+          description: Bad Gateway
+          schema:
+            $ref: '#/definitions/content_transport_http.ErrorResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/content_transport_http.ErrorResponse'
       summary: Get a recipe
       tags:
       - content

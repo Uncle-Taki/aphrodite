@@ -12,6 +12,14 @@ type SlugReader interface {
 	FindBySlug(ctx context.Context, resource, slug string, query Query) (Document, error)
 }
 
+// DocumentWriter mutates Strapi documents. The BFF forwards editorial
+// payloads as-is; Strapi remains the validator of record for attributes.
+type DocumentWriter interface {
+	Create(ctx context.Context, resource string, payload map[string]any, query Query) (Document, error)
+	Update(ctx context.Context, resource, documentID string, payload map[string]any, query Query) (Document, error)
+	Delete(ctx context.Context, resource, documentID string, query Query) error
+}
+
 type Query struct {
 	Locale   string
 	Status   string
@@ -20,7 +28,9 @@ type Query struct {
 	Sort     []string
 	Fields   []string
 	Populate []string
-	Filters  map[string]string
+	// Filters matches attribute paths by exact value. Dots separate nested
+	// attributes, for example mainCategory.slug.
+	Filters map[string]string
 }
 
 type Document struct {

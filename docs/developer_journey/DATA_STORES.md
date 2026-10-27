@@ -8,7 +8,7 @@ editorial content and its CMS metadata.
 
 | Store | Local service | Owner | What it stores | What it does not store |
 |---|---|---|---|---|
-| Application PostgreSQL | `postgres` | Go application | Users, posts, comments, and CMS sessions | Strapi editorial documents and uploaded media |
+| Application PostgreSQL | `postgres` | Go application | Users, posts, and comments | Strapi editorial documents and uploaded media |
 | Strapi PostgreSQL | `strapi-postgres` | Strapi | Strapi content records, localization, relations, admin/plugin data, and upload metadata | The actual media bytes when S3/MinIO upload is enabled |
 | Redis | `redis` | Go application and worker | Strapi response cache and Asynq job queues | Durable source-of-truth records |
 | MinIO / S3-compatible object storage | `minio` locally | Strapi upload plugin and Go media adapters | Original uploaded files and other binary objects | Relational metadata, content fields, or job state |
@@ -30,13 +30,12 @@ The Go-owned tables are:
   and the `disabled` flag.
 - `posts`: posts authored by Go users.
 - `comments`: comments attached to Go posts and authors.
-- `cms_sessions`: hashed, expiring CMS login sessions for admin/editor access.
 
 The row mappings live under `internal/*/infra/postgres`. Repositories and
 use-cases should treat these tables as the source of truth for authentication,
-authorization, posts, comments, and sessions.
+authorization, posts, and comments.
 
-The API initializes these four tables with GORM `AutoMigrate` during startup.
+The API initializes these three tables with GORM `AutoMigrate` during startup.
 There is no separate Aphrodite migration command. AutoMigrate creates and
 updates the schema represented by the Go row types, including their declared
 indexes and relationships; it does not reproduce arbitrary SQL or perform

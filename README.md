@@ -31,7 +31,7 @@ Interactive API docs (Swagger UI) are served at [`/swagger/index.html`](http://l
 
 ## Getting started
 
-The BFF uses Go-owned Postgres/Redis data and reads published articles, recipes, taxonomy, products, affiliate links, and newsletters from Strapi. The API automatically initializes its Aphrodite PostgreSQL tables with GORM AutoMigrate, while Strapi initializes its own separate PostgreSQL database. Local Compose also starts Strapi, its PostgreSQL database, and MinIO:
+The BFF uses Go-owned Postgres/Redis data and serves published articles, recipes, taxonomy, products, affiliate links, and newsletters from Strapi. Editorial writes are proxied through the BFF and authorized with Aphrodite bearer tokens. The API automatically initializes its Aphrodite PostgreSQL tables with GORM AutoMigrate, while Strapi initializes its own separate PostgreSQL database. Local Compose also starts Strapi, its PostgreSQL database, and MinIO:
 
 ```bash
 cp .env.example .env      # then fill in required values
@@ -39,17 +39,27 @@ docker compose -f build/docker-compose.yaml up --build
 curl -s http://localhost:8080/healthz
 ```
 
-Content endpoints are served through the BFF; the frontend should not call Strapi directly:
+Content endpoints are served through the BFF; the frontend should not call Strapi directly. Reads are public. Editorial writes require an Aphrodite bearer token: admins can create, update, and delete; editors can update existing content only.
 
 ```text
-GET /v1/articles/{slug}?locale=fa
-GET /v1/recipes/{slug}?locale=fa
-GET /v1/categories/{slug}?locale=fa
-GET /v1/products/{slug}?locale=fa
-GET /v1/newsletters/{slug}?locale=fa
+GET    /v1/articles?locale=fa&page=1&pageSize=15
+GET    /v1/articles/{slug}?locale=fa
+GET    /v1/recipes?locale=fa
+GET    /v1/recipes/{slug}?locale=fa
+GET    /v1/categories?locale=fa
+GET    /v1/categories/{slug}?locale=fa
+GET    /v1/products?locale=fa
+GET    /v1/products/{slug}?locale=fa
+GET    /v1/newsletters?locale=fa
+GET    /v1/newsletters/{slug}?locale=fa
+POST   /v1/categories            # admin bearer token
+PUT    /v1/categories/{id}       # admin/editor bearer token; Strapi documentId
+DELETE /v1/categories/{id}       # admin bearer token
 ```
 
-Strapi administration is available at `http://localhost:1337/admin`. Create the first editor account through the Strapi admin bootstrap flow and provide the BFF with a scoped `STRAPI_API_TOKEN`.
+Strapi administration is available at `http://localhost:1337/admin`. Create a scoped `STRAPI_API_TOKEN` there — reads need `find` permissions; proxied writes need `create`, `update`, and `delete` on the corresponding content types. This token is a BFF-to-Strapi server credential, not a Strapi admin password.
+
+`POST /v1/users/login` authenticates Aphrodite users, including `editor` and `admin` roles, and returns the bearer token used for editorial writes. It does not authenticate a Strapi `admin_users` record. Bootstrap an editorial user through `POST /v1/users/register` with `role: "editor"` or `"admin"` and the configured `super_admin_key`; Strapi’s admin account and the BFF’s editorial account are separate identities.
 
 If Postgres reports `password authentication failed` after changing `.env`, reset the local database volume and start again:
 
@@ -104,9 +114,9 @@ Every user carries a `role`:
 |---|---|
 | `user` | Register, login, view/update own profile, change password, create/list/read/update/delete own posts, comment, update/delete own comments |
 | `admin` | Everything a `user` can, plus: view/update any profile, promote users to admin, update/delete any post, update/delete any comment |
-| `editor` | CMS session access for editorial workflows; cannot administer users or application-owned posts/comments |
+| `editor` | Update existing Strapi-backed editorial content through the BFF; cannot create/delete editorial content, administer users, or manage application-owned posts/comments |
 
-Roles default to `user`. Public registration may create an `admin` or `editor` only when the request includes the configured `SUPER_ADMIN_KEY` as `super_admin_key`; after bootstrap, existing admins can promote users through `PUT /v1/users/{id}`. Editors use CMS cookie sessions rather than application bearer tokens.
+Roles default to `user`. Public registration may create an `admin` or `editor` only when the request includes the configured `SUPER_ADMIN_KEY` as `super_admin_key`; after bootstrap, existing admins can promote users through `PUT /v1/users/{id}`. Editors use the normal Aphrodite bearer-token login flow.
 
 ---
 

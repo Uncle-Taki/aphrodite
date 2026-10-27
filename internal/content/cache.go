@@ -5,7 +5,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"fmt"
 	"time"
 )
 
@@ -63,14 +62,12 @@ func cacheKeyForQuery(resource, slug string, query Query) string {
 	// The response also depends on fields, populate, pagination, sorting, and
 	// filters. Canonical JSON gives us a deterministic representation (including
 	// sorted map keys) without exposing user-controlled values in Redis keys.
-	encoded, err := json.Marshal(struct {
+	// Query contains only JSON-supported strings, integers, slices, and maps.
+	encoded, _ := json.Marshal(struct {
 		Resource string `json:"resource"`
 		Slug     string `json:"slug"`
 		Query    Query  `json:"query"`
 	}{resource, slug, query})
-	if err != nil {
-		encoded = []byte(fmt.Sprintf("%s|%s|%s|%s", resource, slug, query.Locale, query.Status))
-	}
 	sum := sha256.Sum256(encoded)
 	return "content:strapi:" + hex.EncodeToString(sum[:])
 }

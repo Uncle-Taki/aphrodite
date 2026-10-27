@@ -2,7 +2,6 @@ package domain
 
 import (
 	"errors"
-	"strings"
 	"testing"
 	"time"
 
@@ -187,20 +186,5 @@ func TestLooksLikeEmail(t *testing.T) {
 		if got := looksLikeEmail(email); got != want {
 			t.Errorf("looksLikeEmail(%q) = %v, want %v", email, got, want)
 		}
-	}
-}
-
-func TestHashSessionTokenIsStable(t *testing.T) {
-	first := HashSessionToken("token-a")
-	second := HashSessionToken("token-a")
-	other := HashSessionToken("token-b")
-	if first != second {
-		t.Fatal("same input must hash identically")
-	}
-	if first == other {
-		t.Fatal("different inputs must hash differently")
-	}
-	if len(first) != 64 || strings.ContainsAny(first, "ghijklmnopqrstuvwxyz") {
-		t.Fatalf("expected lowercase hex sha256, got %q", first)
 	}
 }

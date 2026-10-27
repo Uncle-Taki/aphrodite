@@ -39,6 +39,7 @@ import (
 	"aphrodite/internal/shared/httpx/middleware"
 	sharedpg "aphrodite/internal/shared/postgres"
 	sharedredis "aphrodite/internal/shared/redis"
+	userdomain "aphrodite/internal/user/domain"
 	usercrypto "aphrodite/internal/user/infra/crypto"
 	userpg "aphrodite/internal/user/infra/postgres"
 	usertoken "aphrodite/internal/user/infra/token"
@@ -50,8 +51,10 @@ import (
 	_ "aphrodite/docs"
 )
 
+var exitProcess = os.Exit
+
 func main() {
-	os.Exit(run())
+	exitProcess(run())
 }
 
 type redisPinger interface {
@@ -84,7 +87,7 @@ func defaultRunDeps() runDeps {
 		listenAndServe: func(srv *http.Server) error {
 			return srv.ListenAndServe()
 		},
-		exitOnUnexpectedServeError: os.Exit,
+		exitOnUnexpectedServeError: exitProcess,
 	}
 }
 
@@ -146,12 +149,14 @@ func runWithDeps(deps runDeps) int {
 		}); ok {
 			contentReader = content.NewCachedSlugReader(contentClient, cache, config.C.Strapi.CacheTTL)
 		}
-		contentHandler = contenttransport.NewHandler(contentReader, config.C.Strapi.DefaultLocale, config.C.Strapi.FallbackLocale)
+		contentHandler = contenttransport.NewHandlerWithList(contentReader, contentClient, config.C.Strapi.DefaultLocale, config.C.Strapi.FallbackLocale, contenttransport.ListConfig{
+			DefaultLimit: config.C.Pagination.ContentDefaultLimit,
+			MaxLimit:     config.C.Pagination.ContentMaxLimit,
+		})
 	}
 
 	// ── user context ────────────────────────────────────────────────────────────
 	userRepo := userpg.New(db)
-	sessionRepo := userpg.NewSessionRepository(db)
 	hasher := usercrypto.NewBcryptHasher(config.C.Auth.BcryptCost)
 	tokens, err := usertoken.NewJWT(usertoken.JWTConfig{
 		Secret:         config.C.Auth.JWTSecret,
@@ -173,9 +178,6 @@ func runWithDeps(deps runDeps) int {
 	updateUser := useruc.NewUpdateUser(userRepo, nil)
 	changePassword := useruc.NewChangePassword(userRepo, hasher, nil)
 	userHandler := usertransport.NewHandler(registerUser, authenticateUser, getUserProfile, listUsers, updateUser, changePassword)
-	cmsSessions := useruc.NewCMSSessionManager(userRepo, hasher, sessionRepo, config.C.Session.TTL)
-	cmsHandler := usertransport.NewCMSHandler(cmsSessions, config.C.Session.CookieName, config.C.Session.TTL, config.C.Session.Secure)
-
 	// ── post context ────────────────────────────────────────────────────────────
 	postRepo := postpg.New(db)
 	postHandler := posttransport.NewHandler(
@@ -228,12 +230,18 @@ func runWithDeps(deps runDeps) int {
 
 	v1 := r.Group("/v1")
 	usertransport.Register(v1, userHandler, tokens)
-	usertransport.RegisterCMS(v1, cmsHandler)
 	if contentHandler != nil {
-		contenttransport.RegisterRoutes(v1, contentHandler)
+		contenttransport.RegisterRoutes(
+			v1,
+			contentHandler,
+			authMW,
+			usertransport.RequireAdmin(),
+			usertransport.RequireRoles(userdomain.RoleAdmin, userdomain.RoleEditor),
+		)
 	}
-	posttransport.Register(v1, postHandler, authMW)
-	commenttransport.Register(v1, commentHandler, authMW)
+	applicationWriteRole := usertransport.RequireRoles(userdomain.RoleUser, userdomain.RoleAdmin)
+	posttransport.Register(v1, postHandler, authMW, applicationWriteRole)
+	commenttransport.Register(v1, commentHandler, authMW, applicationWriteRole)
 
 	srv := &http.Server{
 		Addr:         ":" + config.C.Port,

@@ -1,10 +1,4 @@
-
-#   dev      → air hot-reload for local development
-#   builder  → static Go binary for cmd/api
-#   runtime  → minimal runtime image
-#
-
-# ── Dev stage (air hot-reload) ─────────────────────────────────────────────────
+# ── Dev stage (air hot-reload) ────────────────────────────────────────────────
 FROM golang:1.26 AS dev
 
 WORKDIR /app
@@ -12,8 +6,10 @@ WORKDIR /app
 RUN rm /etc/apt/sources.list.d/*
 COPY ./build/debian.list /etc/apt/sources.list.d/debian.list
 
-ENV GOPROXY="https://proxy.golang.org,direct"
-ENV GOSUMDB="off"
+ARG GOPROXY=https://goproxy.cn,direct
+
+ENV GOPROXY=${GOPROXY} \
+    GOSUMDB="off"
 
 RUN apt update && apt install -y git
 
@@ -25,7 +21,7 @@ RUN go install github.com/air-verse/air@latest \
 ENV PATH="/go/bin:${PATH}"
 
 COPY go.mod go.sum ./
-RUN go mod download
+RUN go env GOPROXY && go mod download
 
 CMD ["air", "-c", "build/.air.toml"]
 
@@ -33,7 +29,9 @@ CMD ["air", "-c", "build/.air.toml"]
 # ── Build stage ────────────────────────────────────────────────────────────────
 FROM golang:1.26 AS builder
 
-ENV GOPROXY="https://proxy.golang.org,direct" \
+ARG GOPROXY=https://goproxy.cn,direct
+
+ENV GOPROXY=${GOPROXY} \
     GOSUMDB="off" \
     GO111MODULE=on \
     CGO_ENABLED=0 \
@@ -43,7 +41,7 @@ ENV GOPROXY="https://proxy.golang.org,direct" \
 WORKDIR /app
 
 COPY go.mod go.sum ./
-RUN go mod download
+RUN go env GOPROXY && go mod download
 
 COPY . .
 
@@ -57,8 +55,10 @@ FROM debian:13.3 AS runtime
 RUN rm /etc/apt/sources.list.d/*
 COPY ./build/debian.list /etc/apt/sources.list.d/debian.list
 
-ENV GOPROXY="https://proxy.golang.org,direct"
-ENV GOSUMDB="off"
+ARG GOPROXY=https://goproxy.cn,direct
+
+ENV GOPROXY=${GOPROXY} \
+    GOSUMDB="off"
 
 RUN apt update && apt install -y tzdata apt-transport-https ca-certificates \
     && rm -rf /var/lib/apt/lists/*
