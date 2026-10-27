@@ -114,11 +114,79 @@ func TestListArticlesForwardsSortAndAllowlistedFilters(t *testing.T) {
 	if len(query.Sort) != 2 || query.Sort[0] != "title:asc" {
 		t.Fatalf("unexpected sort: %+v", query.Sort)
 	}
-	if query.Filters["mainCategory"] != "beauty" || query.Filters["author"] != "sara" {
+	if query.Filters["mainCategory.slug"] != "beauty" || query.Filters["author.slug"] != "sara" {
 		t.Fatalf("unexpected filters: %+v", query.Filters)
 	}
 	if query.Locale != "en" {
 		t.Fatalf("unexpected locale %q", query.Locale)
+	}
+}
+
+func TestListRelationSlugFilters(t *testing.T) {
+	for _, path := range []string{
+		"/v1/articles?mainCategory=beauty&author=sara",
+		"/v1/recipes?mainCategory=beauty&author=sara",
+		"/v1/products?brand=example",
+	} {
+		t.Run(path, func(t *testing.T) {
+			reader := &fakeSlugReader{}
+			router := newListRouter(t, reader)
+			res := httptest.NewRecorder()
+			router.ServeHTTP(res, httptest.NewRequest(http.MethodGet, path+"&ignored=value&slug=untrusted", nil))
+			if res.Code != http.StatusOK {
+				t.Fatalf("unexpected status %d: %s", res.Code, res.Body.String())
+			}
+			want := map[string]string{"mainCategory.slug": "beauty", "author.slug": "sara"}
+			if strings.HasPrefix(path, "/v1/products") {
+				want = map[string]string{"brand.slug": "example"}
+			}
+			filters := reader.queries[0].Filters
+			if len(filters) != len(want) {
+				t.Fatalf("unexpected filters: %+v", filters)
+			}
+			for key, value := range want {
+				if filters[key] != value {
+					t.Errorf("filter %s = %q, want %q", key, filters[key], value)
+				}
+			}
+		})
+	}
+}
+
+func TestWriteMapsUpstreamErrors(t *testing.T) {
+	for _, method := range []string{http.MethodPost, http.MethodPut} {
+		for _, tc := range []struct {
+			name    string
+			err     error
+			status  int
+			message string
+		}{
+			{"validation", content.ErrInvalidRequest, http.StatusBadRequest, "invalid content payload"},
+			{"not found", content.ErrNotFound, http.StatusNotFound, "content not found"},
+			{"unavailable", content.ErrUnavailable, http.StatusServiceUnavailable, "content service unavailable"},
+			{"forbidden server credential", content.ErrForbidden, http.StatusBadGateway, "content service unavailable"},
+		} {
+			t.Run(method+"/"+tc.name, func(t *testing.T) {
+				writer := &fakeWriter{reader: &fakeSlugReader{}, createErr: tc.err, updateErr: tc.err}
+				router := newWriteRouter(t, writer, authGate(false), allow(), allow())
+				path := "/v1/articles"
+				if method == http.MethodPut {
+					path += "/doc-9"
+				}
+				res := httptest.NewRecorder()
+				router.ServeHTTP(res, httptest.NewRequest(method, path, strings.NewReader(`{}`)))
+				if res.Code != tc.status {
+					t.Fatalf("expected %d, got %d: %s", tc.status, res.Code, res.Body.String())
+				}
+				var body ErrorResponse
+				if err := json.Unmarshal(res.Body.Bytes(), &body); err != nil {
+					t.Fatal(err)
+				}
+				if body.Error != tc.message {
+					t.Fatalf("expected %q, got %q", tc.message, body.Error)
+				}
+			})
+		}
 	}
 }
 
@@ -237,29 +305,47 @@ func (f *fakeWriter) Delete(_ context.Context, resource, documentID string, quer
 	return f.deleteErr
 }
 
-// authGate mimics the CMS session + role middleware for write routes.
+// authGate mimics bearer authentication for write routes.
 func authGate(abort bool) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if abort {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "cms session required"})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "missing bearer token"})
 			return
 		}
 		c.Next()
 	}
 }
 
-func newWriteRouter(t *testing.T, writer *fakeWriter, auth gin.HandlerFunc) *gin.Engine {
+func allow() gin.HandlerFunc {
+	return func(c *gin.Context) { c.Next() }
+}
+
+func roleGate(roles ...string) gin.HandlerFunc {
+	allowed := make(map[string]struct{}, len(roles))
+	for _, role := range roles {
+		allowed[role] = struct{}{}
+	}
+	return func(c *gin.Context) {
+		if _, ok := allowed[c.GetHeader("X-Test-Role")]; !ok {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "required role not granted"})
+			return
+		}
+		c.Next()
+	}
+}
+
+func newWriteRouter(t *testing.T, writer *fakeWriter, auth, adminRole, editorRole gin.HandlerFunc) *gin.Engine {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
 	h := NewHandlerWithList(writer, writer, "", "", ListConfig{DefaultLimit: 15, MaxLimit: 75})
-	RegisterRoutes(r.Group("/v1"), h, auth)
+	RegisterRoutes(r.Group("/v1"), h, auth, adminRole, editorRole)
 	return r
 }
 
 func TestWriteRoutesRequireAuth(t *testing.T) {
 	writer := &fakeWriter{reader: &fakeSlugReader{}}
-	router := newWriteRouter(t, writer, authGate(true))
+	router := newWriteRouter(t, writer, authGate(true), allow(), allow())
 
 	res := httptest.NewRecorder()
 	router.ServeHTTP(res, httptest.NewRequest(http.MethodPost, "/v1/categories", strings.NewReader(`{"name":"Beauty"}`)))
@@ -267,13 +353,51 @@ func TestWriteRoutesRequireAuth(t *testing.T) {
 		t.Fatalf("expected 401, got %d: %s", res.Code, res.Body.String())
 	}
 	if writer.create.called {
-		t.Fatal("writer must not be called without a CMS session")
+		t.Fatal("writer must not be called without a bearer token")
+	}
+}
+
+func TestWriteRoutesEnforceAdminEditorPermissionMatrix(t *testing.T) {
+	cases := []struct {
+		name   string
+		method string
+		role   string
+		status int
+		called func(*fakeWriter) bool
+	}{
+		{"admin creates", http.MethodPost, "admin", http.StatusCreated, func(w *fakeWriter) bool { return w.create.called }},
+		{"editor cannot create", http.MethodPost, "editor", http.StatusForbidden, func(w *fakeWriter) bool { return w.create.called }},
+		{"admin updates", http.MethodPut, "admin", http.StatusOK, func(w *fakeWriter) bool { return w.update.called }},
+		{"editor updates", http.MethodPut, "editor", http.StatusOK, func(w *fakeWriter) bool { return w.update.called }},
+		{"admin deletes", http.MethodDelete, "admin", http.StatusNoContent, func(w *fakeWriter) bool { return w.deleteID != "" }},
+		{"editor cannot delete", http.MethodDelete, "editor", http.StatusForbidden, func(w *fakeWriter) bool { return w.deleteID != "" }},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			writer := &fakeWriter{reader: &fakeSlugReader{}}
+			router := newWriteRouter(t, writer, authGate(false), roleGate("admin"), roleGate("admin", "editor"))
+			req := httptest.NewRequest(tc.method, "/v1/categories/doc-9", strings.NewReader(`{"name":"Beauty"}`))
+			if tc.method == http.MethodPost {
+				req = httptest.NewRequest(tc.method, "/v1/categories", strings.NewReader(`{"name":"Beauty"}`))
+			}
+			req.Header.Set("X-Test-Role", tc.role)
+			res := httptest.NewRecorder()
+			router.ServeHTTP(res, req)
+
+			if res.Code != tc.status {
+				t.Fatalf("expected %d, got %d: %s", tc.status, res.Code, res.Body.String())
+			}
+			if got := tc.called(writer); got != (tc.status < http.StatusBadRequest) {
+				t.Fatalf("writer called=%t for status %d", got, tc.status)
+			}
+		})
 	}
 }
 
 func TestCreateCategoryForwardsPayload(t *testing.T) {
 	writer := &fakeWriter{reader: &fakeSlugReader{}}
-	router := newWriteRouter(t, writer, authGate(false))
+	router := newWriteRouter(t, writer, authGate(false), allow(), allow())
 
 	res := httptest.NewRecorder()
 	router.ServeHTTP(res, httptest.NewRequest(http.MethodPost, "/v1/categories?locale=en", strings.NewReader(`{"name":"Beauty","slug":"beauty"}`)))
@@ -297,7 +421,7 @@ func TestCreateCategoryForwardsPayload(t *testing.T) {
 
 func TestUpdateCategoryMapsNotFound(t *testing.T) {
 	writer := &fakeWriter{reader: &fakeSlugReader{}, updateErr: content.ErrNotFound}
-	router := newWriteRouter(t, writer, authGate(false))
+	router := newWriteRouter(t, writer, authGate(false), allow(), allow())
 
 	res := httptest.NewRecorder()
 	router.ServeHTTP(res, httptest.NewRequest(http.MethodPut, "/v1/categories/doc-9", strings.NewReader(`{"name":"New"}`)))
@@ -308,7 +432,7 @@ func TestUpdateCategoryMapsNotFound(t *testing.T) {
 
 func TestDeleteCategoryNoContent(t *testing.T) {
 	writer := &fakeWriter{reader: &fakeSlugReader{}}
-	router := newWriteRouter(t, writer, authGate(false))
+	router := newWriteRouter(t, writer, authGate(false), allow(), allow())
 
 	res := httptest.NewRecorder()
 	router.ServeHTTP(res, httptest.NewRequest(http.MethodDelete, "/v1/categories/doc-9", nil))
@@ -325,7 +449,7 @@ func TestWriteRoutesNotRegisteredWithoutWriter(t *testing.T) {
 	r := gin.New()
 	reader := &fakeSlugReader{}
 	h := NewHandler(reader, "", "")
-	RegisterRoutes(r.Group("/v1"), h, authGate(false))
+	RegisterRoutes(r.Group("/v1"), h, authGate(false), allow(), allow())
 
 	res := httptest.NewRecorder()
 	router := r
@@ -337,7 +461,7 @@ func TestWriteRoutesNotRegisteredWithoutWriter(t *testing.T) {
 
 func TestCreateInvalidJSONRejected(t *testing.T) {
 	writer := &fakeWriter{reader: &fakeSlugReader{}}
-	router := newWriteRouter(t, writer, authGate(false))
+	router := newWriteRouter(t, writer, authGate(false), allow(), allow())
 
 	res := httptest.NewRecorder()
 	router.ServeHTTP(res, httptest.NewRequest(http.MethodPost, "/v1/articles", strings.NewReader(`{not json`)))

@@ -1,0 +1,57 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: coverage
+      POSTGRES_PASSWORD: coverage-only
+      POSTGRES_DB: aphrodite_strapi_test
+    ports:
+      - "127.0.0.1::5432"
+    volumes:
+      - ../scripts/fixtures/test-databases.sql:/docker-entrypoint-initdb.d/01-test-databases.sql:ro
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "coverage", "-d", "aphrodite_strapi_test"]
+      interval: 1s
+      timeout: 3s
+      retries: 30
+
+  strapi:
+    image: aphrodite-strapi-test:local
+    build:
+      context: ../cms/strapi
+      dockerfile: Dockerfile
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: 1337
+      APP_KEYS: test-key-1,test-key-2,test-key-3,test-key-4
+      API_TOKEN_SALT: coverage-api-token-salt
+      ADMIN_JWT_SECRET: coverage-admin-jwt-secret
+      JWT_SECRET: coverage-users-permissions-jwt-secret
+      TRANSFER_TOKEN_SALT: coverage-transfer-token-salt
+      ENCRYPTION_KEY: coverage-encryption-key-32-bytes-long
+      DATABASE_CLIENT: postgres
+      DATABASE_HOST: postgres
+      DATABASE_PORT: 5432
+      DATABASE_NAME: aphrodite_strapi_test
+      DATABASE_USERNAME: coverage
+      DATABASE_PASSWORD: coverage-only
+      DATABASE_SSL: "false"
+      STRAPI_PLUGIN_I18N_INIT_LOCALE_CODE: fa
+      STRAPI_TELEMETRY_DISABLED: "true"
+      STRAPI_UPLOAD_PROVIDER: local
+    ports:
+      - "127.0.0.1::1337"
+    volumes:
+      - ../scripts/fixtures/strapi-bootstrap.cjs:/opt/app/dist/src/index.js:ro
+      - "${APHRODITE_TEST_FIXTURE_DIR:?set by test runner}:/test-fixtures"
+    tmpfs:
+      - /opt/app/public/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:1337/_health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 2s
+      timeout: 5s
+      retries: 60

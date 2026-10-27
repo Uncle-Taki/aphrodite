@@ -100,7 +100,7 @@ services:
       POSTGRES_PASSWORD: ${STRAPI_DB_PASSWORD:-strapi_dev_password}
       POSTGRES_DB: ${STRAPI_DB_NAME:-aphrodite_strapi}
     ports:
-      - "${STRAPI_DB_PORT:-5433}:5432"
+      - "127.0.0.1:${STRAPI_DB_PORT:-5433}:5432"
     volumes:
       - strapi_postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -114,7 +114,7 @@ services:
     image: postgres:16-alpine
     env_file: ../.env
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:

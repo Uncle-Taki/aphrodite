@@ -86,7 +86,7 @@ func newTestRouter(repo *memoryRepo) *gin.Engine {
 		usecase.NewUpdatePost(repo, usecase.UpdatePostConfig{TitleMaxLength: 20, ContentMaxLength: 50}, nil),
 		usecase.NewDeletePost(repo),
 	)
-	Register(r.Group("/v1"), handler, authStub())
+	Register(r.Group("/v1"), handler, authStub(), allowApplicationWrites())
 	return r
 }
 
@@ -101,6 +101,10 @@ func authStub() gin.HandlerFunc {
 		authctx.Set(c, authctx.Caller{ID: uuid.MustParse("b3f6a3a8-6df0-4e9e-a9c0-d4a1c1e58a9f"), Role: "user"})
 		c.Next()
 	}
+}
+
+func allowApplicationWrites() gin.HandlerFunc {
+	return func(c *gin.Context) { c.Next() }
 }
 
 func newAuthedRequest(method, target, body string) *http.Request {

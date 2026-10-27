@@ -5,7 +5,7 @@ services:
       dockerfile: build/Dockerfile
       target: runtime
       args:
-        GOPROXY: ${GOPROXY:-https://proxy.golang.org,direct}
+        GOPROXY: ${GOPROXY:-https://goproxy.cn,direct}
     ports:
       - "${APP_PORT:-8080}:8080"
     env_file: ../.env
@@ -25,7 +25,7 @@ services:
       dockerfile: build/Dockerfile
       target: runtime
       args:
-        GOPROXY: ${GOPROXY:-https://proxy.golang.org,direct}
+        GOPROXY: ${GOPROXY:-https://goproxy.cn,direct}
     command: ["/app/aphrodite-worker"]
     env_file: ../.env
     depends_on:
@@ -90,6 +90,8 @@ services:
       POSTGRES_USER: ${STRAPI_DB_USER:-strapi}
       POSTGRES_PASSWORD: ${STRAPI_DB_PASSWORD:-strapi_dev_password}
       POSTGRES_DB: ${STRAPI_DB_NAME:-aphrodite_strapi}
+    ports:
+      - "127.0.0.1:5433:5432"
     volumes:
       - strapi_postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -102,6 +104,8 @@ services:
   postgres:
     image: postgres:16-alpine
     env_file: ../.env
+    ports:
+      - "127.0.0.1:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:

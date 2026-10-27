@@ -20,7 +20,6 @@ type Config struct {
 	Storage    StorageConfig
 	Strapi     StrapiConfig
 	Worker     WorkerConfig
-	Session    SessionConfig
 	Auth       AuthConfig
 	Validation ValidationConfig
 	Pagination PaginationConfig
@@ -86,12 +85,6 @@ type WorkerConfig struct {
 	Queue       string
 }
 
-type SessionConfig struct {
-	CookieName string
-	TTL        time.Duration
-	Secure     bool
-}
-
 type AuthConfig struct {
 	JWTSecret         string
 	AccessTokenTTL    time.Duration
@@ -113,6 +106,8 @@ type PaginationConfig struct {
 	PostMaxLimit        int
 	CommentDefaultLimit int
 	CommentMaxLimit     int
+	ContentDefaultLimit int
+	ContentMaxLimit     int
 }
 
 type CryptoConfig struct {
@@ -168,11 +163,6 @@ func Load() {
 			Concurrency: getEnvInt("WORKER_CONCURRENCY", 10),
 			Queue:       getEnv("WORKER_QUEUE", "default"),
 		},
-		Session: SessionConfig{
-			CookieName: getEnv("CMS_SESSION_COOKIE", "aphrodite_cms_session"),
-			TTL:        getEnvDuration("CMS_SESSION_TTL", 12*time.Hour),
-			Secure:     getEnvBool("CMS_SESSION_SECURE", false),
-		},
 		Auth: AuthConfig{
 			JWTSecret:         mustGetEnv("JWT_SECRET"),
 			AccessTokenTTL:    mustGetEnvDuration("JWT_ACCESS_TOKEN_TTL"),
@@ -192,6 +182,8 @@ func Load() {
 			PostMaxLimit:        mustGetPositiveEnvInt("POST_MAX_LIMIT"),
 			CommentDefaultLimit: mustGetPositiveEnvInt("COMMENT_DEFAULT_LIMIT"),
 			CommentMaxLimit:     mustGetPositiveEnvInt("COMMENT_MAX_LIMIT"),
+			ContentDefaultLimit: getEnvInt("CONTENT_DEFAULT_LIMIT", 15),
+			ContentMaxLimit:     getEnvInt("CONTENT_MAX_LIMIT", 75),
 		},
 		Crypto: CryptoConfig{
 			MasterKey: mustGetEnv("CRYPTO_MASTER_KEY"),

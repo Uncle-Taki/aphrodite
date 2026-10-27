@@ -43,9 +43,7 @@ func (uc *AuthenticateUser) Execute(ctx context.Context, in AuthenticateInput) (
 		slog.ErrorContext(ctx, "user: authenticate lookup failed", "err", err)
 		return nil, err
 	}
-	// Editors authenticate through the CMS session flow. They must not receive
-	// an application bearer token that could authorize post/comment routes.
-	if u.Disabled || u.Role == domain.RoleEditor {
+	if u.Disabled {
 		return nil, domain.ErrInvalidCredential
 	}
 

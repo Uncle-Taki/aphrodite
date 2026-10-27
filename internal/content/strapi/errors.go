@@ -13,6 +13,7 @@ var (
 	ErrRateLimited     = content.ErrRateLimited
 	ErrUnavailable     = content.ErrUnavailable
 	ErrInvalidResponse = content.ErrInvalidResponse
+	ErrInvalidRequest  = content.ErrInvalidRequest
 	ErrConflict        = content.ErrConflict
 )
 
@@ -31,6 +32,8 @@ func (e *HTTPError) Error() string {
 
 func (e *HTTPError) Unwrap() error {
 	switch e.Status {
+	case 400:
+		return ErrInvalidRequest
 	case 401:
 		return ErrUnauthorized
 	case 403:

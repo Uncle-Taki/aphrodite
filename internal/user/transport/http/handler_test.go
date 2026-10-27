@@ -125,6 +125,8 @@ func (i verifyTokenIssuer) Verify(_ context.Context, token string) (uuid.UUID, d
 		return uuid.MustParse("b3f6a3a8-6df0-4e9e-a9c0-d4a1c1e58a9f"), domain.RoleUser, nil
 	case "admin-token":
 		return uuid.MustParse("a3f6a3a8-6df0-4e9e-a9c0-d4a1c1e58a9e"), domain.RoleAdmin, nil
+	case "editor-token":
+		return uuid.MustParse("c3f6a3a8-6df0-4e9e-a9c0-d4a1c1e58a9c"), domain.RoleEditor, nil
 	default:
 		return uuid.Nil, "", domain.ErrInvalidCredential
 	}
@@ -425,5 +427,41 @@ func TestAuthMiddleware(t *testing.T) {
 				t.Fatalf("expected %d, got %d", tc.status, res.Code)
 			}
 		})
+	}
+}
+
+func TestRequireRoles(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.GET("/editorial", AuthMiddleware(verifyTokenIssuer{}), RequireRoles(domain.RoleAdmin), func(c *gin.Context) {
+		c.Status(http.StatusOK)
+	})
+
+	res := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/editorial", nil)
+	req.Header.Set("Authorization", "Bearer admin-token")
+	r.ServeHTTP(res, req)
+	if res.Code != http.StatusOK {
+		t.Fatalf("expected admin to be allowed, got %d: %s", res.Code, res.Body.String())
+	}
+
+	res = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/editorial", nil)
+	req.Header.Set("Authorization", "Bearer token")
+	r.ServeHTTP(res, req)
+	if res.Code != http.StatusForbidden {
+		t.Fatalf("expected user to be forbidden, got %d: %s", res.Code, res.Body.String())
+	}
+
+	r = gin.New()
+	r.GET("/application-write", AuthMiddleware(verifyTokenIssuer{}), RequireRoles(domain.RoleUser, domain.RoleAdmin), func(c *gin.Context) {
+		c.Status(http.StatusOK)
+	})
+	res = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/application-write", nil)
+	req.Header.Set("Authorization", "Bearer editor-token")
+	r.ServeHTTP(res, req)
+	if res.Code != http.StatusForbidden {
+		t.Fatalf("expected editor to be denied application writes, got %d: %s", res.Code, res.Body.String())
 	}
 }
