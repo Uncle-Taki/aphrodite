@@ -90,8 +90,6 @@ services:
       POSTGRES_USER: ${STRAPI_DB_USER:-strapi}
       POSTGRES_PASSWORD: ${STRAPI_DB_PASSWORD:-strapi_dev_password}
       POSTGRES_DB: ${STRAPI_DB_NAME:-aphrodite_strapi}
-    ports:
-      - "127.0.0.1:5433:5432"
     volumes:
       - strapi_postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -104,8 +102,6 @@ services:
   postgres:
     image: postgres:16-alpine
     env_file: ../.env
-    ports:
-      - "127.0.0.1:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -125,7 +121,12 @@ services:
     restart: unless-stopped
 
   minio:
-    image: minio/minio:RELEASE.2025-02-28T09-55-16Z
+    build:
+      context: ..
+      dockerfile: build/minio.Dockerfile
+      target: server
+      args:
+        GOPROXY: ${GOPROXY:-https://proxy.golang.org|https://goproxy.cn|direct}
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
@@ -136,7 +137,7 @@ services:
     volumes:
       - minio_data:/data
     healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:9000/minio/health/ready"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -144,7 +145,12 @@ services:
   # Create the bucket before Strapi starts. MinIO does not create buckets
   # automatically when an S3 client first uploads an object.
   minio-init:
-    image: minio/mc:latest
+    build:
+      context: ..
+      dockerfile: build/minio.Dockerfile
+      target: client
+      args:
+        GOPROXY: ${GOPROXY:-https://proxy.golang.org|https://goproxy.cn|direct}
     depends_on:
       minio:
         condition: service_healthy
