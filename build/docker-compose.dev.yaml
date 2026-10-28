@@ -68,7 +68,7 @@ services:
       STRAPI_PLUGIN_I18N_INIT_LOCALE_CODE: ${STRAPI_DEFAULT_LOCALE:-fa}
       STRAPI_TELEMETRY_DISABLED: ${STRAPI_TELEMETRY_DISABLED:-true}
       STRAPI_UPLOAD_PROVIDER: ${STRAPI_UPLOAD_PROVIDER:-aws-s3}
-      S3_ENDPOINT: ${MEDIA_ENDPOINT:-http://minio:9000}
+      S3_ENDPOINT: ${S3_ENDPOINT:-${MEDIA_ENDPOINT:-http://minio:9000}}
       S3_REGION: ${MEDIA_REGION:-us-east-1}
       S3_BUCKET: ${MEDIA_BUCKET:-aphrodite-media}
       S3_ACCESS_KEY_ID: ${MEDIA_ACCESS_KEY:-minioadmin}
@@ -166,6 +166,7 @@ services:
       - >-
         mc alias set local http://minio:9000 "$${MINIO_ACCESS_KEY}"
         "$${MINIO_SECRET_KEY}" && mc mb --ignore-existing
+        "local/$${MEDIA_BUCKET}" && mc anonymous set download
         "local/$${MEDIA_BUCKET}"
 
   imgproxy:
