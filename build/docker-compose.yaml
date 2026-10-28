@@ -5,7 +5,7 @@ services:
       dockerfile: build/Dockerfile
       target: runtime
       args:
-        GOPROXY: ${GOPROXY:-https://proxy.golang.org,direct}
+        GOPROXY: ${GOPROXY:-https://goproxy.cn,direct}
     ports:
       - "${APP_PORT:-8080}:8080"
     env_file: ../.env
@@ -25,7 +25,7 @@ services:
       dockerfile: build/Dockerfile
       target: runtime
       args:
-        GOPROXY: ${GOPROXY:-https://proxy.golang.org,direct}
+        GOPROXY: ${GOPROXY:-https://goproxy.cn,direct}
     command: ["/app/aphrodite-worker"]
     env_file: ../.env
     depends_on:

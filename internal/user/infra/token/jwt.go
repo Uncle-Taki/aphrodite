@@ -82,14 +82,10 @@ func (j *JWT) Issue(_ context.Context, u *domain.User) (string, error) {
 		ExpiresAt: now.Add(j.ttl).Unix(),
 	}
 
-	headerJSON, err := json.Marshal(header)
-	if err != nil {
-		return "", err
-	}
-	claimsJSON, err := json.Marshal(claims)
-	if err != nil {
-		return "", err
-	}
+	// These concrete structs contain only strings and integers, which JSON
+	// always supports; unlike arbitrary payloads, they cannot fail to marshal.
+	headerJSON, _ := json.Marshal(header)
+	claimsJSON, _ := json.Marshal(claims)
 
 	signingInput := encodeSegment(headerJSON) + "." + encodeSegment(claimsJSON)
 	return signingInput + "." + encodeSegment(j.sign(signingInput)), nil

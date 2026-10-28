@@ -12,7 +12,8 @@ import (
 )
 
 type updateCommentRepo struct {
-	comments map[uuid.UUID]*domain.Comment
+	comments  map[uuid.UUID]*domain.Comment
+	createErr error
 }
 
 func newUpdateCommentRepo(comments ...*domain.Comment) *updateCommentRepo {
@@ -25,6 +26,9 @@ func newUpdateCommentRepo(comments ...*domain.Comment) *updateCommentRepo {
 }
 
 func (r *updateCommentRepo) Create(_ context.Context, c *domain.Comment) error {
+	if r.createErr != nil {
+		return r.createErr
+	}
 	cp := *c
 	r.comments[c.ID] = &cp
 	return nil

@@ -64,3 +64,43 @@ func TestCachedSlugReaderSeparatesPopulateQueries(t *testing.T) {
 		t.Fatalf("different populate selections must not share a cache entry, calls=%d", reader.calls)
 	}
 }
+
+func TestCachedSlugReaderPassthroughs(t *testing.T) {
+	reader := &countingReader{}
+	cached := NewCachedSlugReader(reader, &memoryCache{}, time.Minute)
+
+	if _, err := cached.List(context.Background(), "articles", Query{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := cached.Get(context.Background(), "articles", "doc-1", Query{}); err != nil {
+		t.Fatal(err)
+	}
+	if reader.calls != 0 {
+		t.Fatalf("list/get pass through without touching FindBySlug, calls=%d", reader.calls)
+	}
+}
+
+func TestCachedSlugReaderWithoutCache(t *testing.T) {
+	reader := &countingReader{}
+	cached := NewCachedSlugReader(reader, nil, 0)
+	for i := 0; i < 2; i++ {
+		if _, err := cached.FindBySlug(context.Background(), "articles", "hello", Query{}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if reader.calls != 2 {
+		t.Fatalf("nil cache or non-positive ttl must bypass caching, calls=%d", reader.calls)
+	}
+}
+
+func TestCacheKeyIsStableAndDistinct(t *testing.T) {
+	first := cacheKey("articles", "hello", "fa", "published")
+	same := cacheKey("articles", "hello", "fa", "published")
+	other := cacheKey("articles", "hello", "en", "published")
+	if first != same {
+		t.Fatal("same inputs must produce the same key")
+	}
+	if first == other {
+		t.Fatal("different locales must produce different keys")
+	}
+}

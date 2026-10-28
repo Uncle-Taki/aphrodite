@@ -3,13 +3,16 @@ package strapi
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"sync/atomic"
 	"testing"
+	"testing/iotest"
 	"time"
 
 	"aphrodite/internal/content"
@@ -55,7 +58,7 @@ func TestClientFindBySlugDecodesStrapiV5Document(t *testing.T) {
 		if r.URL.Path != "/api/articles" {
 			t.Fatalf("unexpected path %s", r.URL.Path)
 		}
-		if got := r.URL.Query().Get("filters[slug[$eq]]"); got != "hello-world" {
+		if got := r.URL.Query().Get("filters[slug][$eq]"); got != "hello-world" {
 			t.Fatalf("unexpected slug filter %q", got)
 		}
 		if got := r.URL.Query().Get("locale"); got != "fa" {
@@ -85,7 +88,7 @@ func TestClientFindBySlugDoesNotMutateFilters(t *testing.T) {
 	}))
 	defer closeServer()
 
-	filters := map[string]string{"localeCode[$eq]": "fa"}
+	filters := map[string]string{"localeCode": "fa"}
 	_, _ = c.FindBySlug(context.Background(), "articles", "hello", content.Query{Filters: filters})
 	if len(filters) != 1 {
 		t.Fatalf("input filters were mutated: %+v", filters)
@@ -144,11 +147,263 @@ func TestClientDoesNotRetryValidationErrors(t *testing.T) {
 	}
 }
 
+func TestClientRetriesOnlyReads(t *testing.T) {
+	for _, method := range []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete} {
+		for _, failure := range []string{"transport", "response body", "server error", "rate limit"} {
+			t.Run(method+"/"+failure, func(t *testing.T) {
+				var calls, sleeps int
+				wantErr := ErrUnavailable
+				if failure == "rate limit" {
+					wantErr = ErrRateLimited
+				}
+				c, err := newClient(Config{
+					BaseURL: "http://strapi.test", APIToken: "test-token", Timeout: time.Second, MaxRetries: 2,
+				}, &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+					calls++
+					if calls == 1 {
+						switch failure {
+						case "transport":
+							// The write may have committed before its response was lost.
+							return nil, io.ErrUnexpectedEOF
+						case "response body":
+							return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(iotest.ErrReader(io.ErrUnexpectedEOF))}, nil
+						case "server error":
+							return &http.Response{StatusCode: http.StatusBadGateway, Body: http.NoBody}, nil
+						case "rate limit":
+							return &http.Response{StatusCode: http.StatusTooManyRequests, Body: http.NoBody}, nil
+						}
+					}
+					return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{"data":[],"meta":{}}`))}, nil
+				})}, func(context.Context, time.Duration) error { sleeps++; return nil })
+				if err != nil {
+					t.Fatal(err)
+				}
+				switch method {
+				case http.MethodGet:
+					_, err = c.List(context.Background(), "articles", content.Query{})
+				case http.MethodPost:
+					_, err = c.Create(context.Background(), "articles", map[string]any{"title": "New"}, content.Query{})
+				case http.MethodPut:
+					_, err = c.Update(context.Background(), "articles", "doc-9", map[string]any{"title": "New"}, content.Query{})
+				case http.MethodDelete:
+					err = c.Delete(context.Background(), "articles", "doc-9", content.Query{})
+				}
+				if method == http.MethodGet {
+					if err != nil || calls != 2 || sleeps != 1 {
+						t.Fatalf("read should recover after retry: err=%v calls=%d sleeps=%d", err, calls, sleeps)
+					}
+				} else if !errors.Is(err, wantErr) || calls != 1 || sleeps != 0 {
+					t.Fatalf("write must not replay: err=%v want=%v calls=%d sleeps=%d", err, wantErr, calls, sleeps)
+				}
+			})
+		}
+	}
+}
+
+func TestClientMapsValidationErrorsToInvalidRequest(t *testing.T) {
+	c, closeServer := testClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"error":{"status":400,"name":"ValidationError","message":"Invalid key slug"}}`))
+	}))
+	defer closeServer()
+
+	_, err := c.List(context.Background(), "articles", content.Query{})
+	if !errors.Is(err, ErrInvalidRequest) {
+		t.Fatalf("expected ErrInvalidRequest, got %v", err)
+	}
+}
+
+func TestClientEncodesFiltersAsStrapiV5Operators(t *testing.T) {
+	var gotQuery url.Values
+	c, closeServer := testClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotQuery = r.URL.Query()
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":[],"meta":{"pagination":{"page":1,"pageSize":1,"pageCount":0,"total":0}}}`))
+	}))
+	defer closeServer()
+
+	_, err := c.List(context.Background(), "articles", content.Query{
+		Filters: map[string]string{"slug": "hello", "mainCategory.slug": "beauty", "author.slug": "sara", "brand.slug": "example"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for key, want := range map[string]string{
+		"filters[slug][$eq]":               "hello",
+		"filters[mainCategory][slug][$eq]": "beauty",
+		"filters[author][slug][$eq]":       "sara",
+		"filters[brand][slug][$eq]":        "example",
+	} {
+		if got := gotQuery.Get(key); got != want {
+			t.Errorf("%s = %q, want %q (raw %v)", key, got, want, gotQuery)
+		}
+	}
+}
+
 func TestConfigValidation(t *testing.T) {
 	if _, err := New(Config{BaseURL: "", Timeout: time.Second}); err == nil {
 		t.Fatal("expected empty base URL error")
 	}
 	if _, err := New(Config{BaseURL: "ftp://strapi.local", Timeout: time.Second}); err == nil {
 		t.Fatal("expected invalid scheme error")
+	}
+	if _, err := New(Config{BaseURL: "http://strapi.local", Timeout: time.Second}); err == nil {
+		t.Fatal("expected missing API token error")
+	}
+	if _, err := New(Config{BaseURL: "http://strapi.local", APIToken: "replace-with-a-scoped-server-token", Timeout: time.Second}); err == nil {
+		t.Fatal("expected placeholder API token error")
+	}
+}
+
+func TestClientCreateSendsStrapiV5Body(t *testing.T) {
+	var gotMethod, gotPath, gotContentType string
+	var gotBody map[string]any
+	c, closeServer := testClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		gotPath = r.URL.Path
+		gotContentType = r.Header.Get("Content-Type")
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":{"id":9,"documentId":"doc-9","name":"Beauty","slug":"beauty"}}`))
+	}))
+	defer closeServer()
+
+	doc, err := c.Create(context.Background(), "main-categories", map[string]any{"name": "Beauty"}, content.Query{Locale: "fa"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotMethod != http.MethodPost || gotPath != "/api/main-categories" {
+		t.Fatalf("unexpected request %s %s", gotMethod, gotPath)
+	}
+	if gotContentType != "application/json" {
+		t.Fatalf("unexpected content type %q", gotContentType)
+	}
+	if gotBody["data"].(map[string]any)["name"] != "Beauty" {
+		t.Fatalf("payload not wrapped in data envelope: %+v", gotBody)
+	}
+	if doc.DocumentID != "doc-9" {
+		t.Fatalf("unexpected document: %+v", doc)
+	}
+}
+
+func TestClientUpdateSendsPutToDocumentPath(t *testing.T) {
+	var gotMethod, gotPath string
+	c, closeServer := testClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		gotPath = r.URL.Path
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":{"id":9,"documentId":"doc-9","name":"New name"}}`))
+	}))
+	defer closeServer()
+
+	doc, err := c.Update(context.Background(), "main-categories", "doc-9", map[string]any{"name": "New name"}, content.Query{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotMethod != http.MethodPut || gotPath != "/api/main-categories/doc-9" {
+		t.Fatalf("unexpected request %s %s", gotMethod, gotPath)
+	}
+	if doc.DocumentID != "doc-9" {
+		t.Fatalf("unexpected document: %+v", doc)
+	}
+}
+
+func TestClientDeleteUsesDocumentPath(t *testing.T) {
+	var gotMethod, gotPath string
+	c, closeServer := testClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		gotPath = r.URL.Path
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer closeServer()
+
+	if err := c.Delete(context.Background(), "main-categories", "doc-9", content.Query{}); err != nil {
+		t.Fatal(err)
+	}
+	if gotMethod != http.MethodDelete || gotPath != "/api/main-categories/doc-9" {
+		t.Fatalf("unexpected request %s %s", gotMethod, gotPath)
+	}
+}
+
+func TestClientDeleteMapsNotFound(t *testing.T) {
+	c, closeServer := testClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"error":{"status":404,"name":"NotFoundError","message":"Not Found"}}`))
+	}))
+	defer closeServer()
+	if err := c.Delete(context.Background(), "articles", "missing", content.Query{}); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("expected ErrNotFound, got %v", err)
+	}
+}
+
+func TestClientListRejectsEmptySuccessResponse(t *testing.T) {
+	c, closeServer := testClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer closeServer()
+	if _, err := c.List(context.Background(), "articles", content.Query{}); !errors.Is(err, ErrInvalidResponse) {
+		t.Fatalf("expected ErrInvalidResponse, got %v", err)
+	}
+}
+
+func TestClientCreateMapsValidationErrors(t *testing.T) {
+	c, closeServer := testClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"error":{"status":400,"name":"ValidationError","message":"name is required"}}`))
+	}))
+	defer closeServer()
+
+	_, err := c.Create(context.Background(), "main-categories", map[string]any{}, content.Query{})
+	if !errors.Is(err, ErrInvalidRequest) {
+		t.Fatalf("expected ErrInvalidRequest, got %v", err)
+	}
+}
+
+func TestClientGetRejectsEmptyDocumentID(t *testing.T) {
+	c, closeServer := testClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	defer closeServer()
+	if _, err := c.Get(context.Background(), "articles", "  ", content.Query{}); err == nil {
+		t.Fatal("expected empty document ID to be rejected")
+	}
+}
+
+func TestClientGetDecodesSingleDocument(t *testing.T) {
+	c, closeServer := testClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/articles/doc-7" {
+			t.Fatalf("unexpected path %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":{"id":7,"documentId":"doc-7","title":"سلام"},"meta":{"pagination":{"total":1}}}`))
+	}))
+	defer closeServer()
+
+	doc, err := c.Get(context.Background(), "articles", "doc-7", content.Query{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if doc.DocumentID != "doc-7" || doc.Fields["title"] != "سلام" {
+		t.Fatalf("unexpected document: %+v", doc)
+	}
+}
+
+func TestClientUpdateDeleteRejectEmptyDocumentID(t *testing.T) {
+	c, closeServer := testClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	defer closeServer()
+	if _, err := c.Update(context.Background(), "articles", "", nil, content.Query{}); err == nil {
+		t.Fatal("expected empty document ID to be rejected on update")
+	}
+	if err := c.Delete(context.Background(), "articles", " ", content.Query{}); err == nil {
+		t.Fatal("expected empty document ID to be rejected on delete")
+	}
+}
+
+func TestClientRejectsInvalidResource(t *testing.T) {
+	c, closeServer := testClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	defer closeServer()
+	if _, err := c.List(context.Background(), "", content.Query{}); err == nil {
+		t.Fatal("expected empty resource to be rejected")
+	}
+	if _, err := c.List(context.Background(), "/articles", content.Query{}); err == nil {
+		t.Fatal("expected absolute path resource to be rejected")
 	}
 }

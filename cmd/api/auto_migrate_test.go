@@ -16,7 +16,7 @@ func TestAutoMigrateCreatesApplicationSchema(t *testing.T) {
 		t.Fatalf("autoMigrate: %v", err)
 	}
 
-	for _, table := range []string{"users", "cms_sessions", "posts", "comments"} {
+	for _, table := range []string{"users", "posts", "comments"} {
 		if !db.Migrator().HasTable(table) {
 			t.Fatalf("expected table %q", table)
 		}
@@ -27,9 +27,6 @@ func TestAutoMigrateCreatesApplicationSchema(t *testing.T) {
 	}{
 		{"users", "idx_users_username"},
 		{"users", "idx_users_email"},
-		{"cms_sessions", "idx_cms_sessions_token_hash"},
-		{"cms_sessions", "idx_cms_sessions_user_id"},
-		{"cms_sessions", "idx_cms_sessions_expires_at"},
 		{"posts", "idx_posts_author_id"},
 		{"posts", "idx_posts_created_at"},
 		{"comments", "idx_comments_post_id"},
@@ -47,7 +44,6 @@ func TestAutoMigrateCreatesApplicationSchema(t *testing.T) {
 		{"posts", "fk_posts_author"},
 		{"comments", "fk_comments_post"},
 		{"comments", "fk_comments_author"},
-		{"cms_sessions", "fk_cms_sessions_user"},
 	} {
 		if !db.Migrator().HasConstraint(relation.table, relation.name) {
 			t.Errorf("expected foreign key %s on %s", relation.name, relation.table)

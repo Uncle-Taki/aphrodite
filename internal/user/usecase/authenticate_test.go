@@ -16,10 +16,14 @@ func (fakeTokenIssuer) Verify(context.Context, string) (uuid.UUID, domain.Role, 
 	return uuid.Nil, domain.RoleUser, nil
 }
 
-func TestAuthenticateUser_EditorUsesCMSSessionInsteadOfBearerToken(t *testing.T) {
+func TestAuthenticateUser_EditorReceivesBearerToken(t *testing.T) {
 	user := testUser(uuid.New(), domain.RoleEditor)
 	uc := NewAuthenticateUser(newUserMemoryRepo(user), fakePasswordHasher{}, fakeTokenIssuer{})
-	if _, err := uc.Execute(context.Background(), AuthenticateInput{Identifier: "alice", Password: "old-password"}); err != domain.ErrInvalidCredential {
-		t.Fatalf("expected editor bearer login to be rejected, got %v", err)
+	result, err := uc.Execute(context.Background(), AuthenticateInput{Identifier: "alice", Password: "old-password"})
+	if err != nil {
+		t.Fatalf("expected editor bearer login to succeed, got %v", err)
+	}
+	if result.Token == "" || result.User.Role != domain.RoleEditor {
+		t.Fatalf("unexpected editor authentication result: %+v", result)
 	}
 }

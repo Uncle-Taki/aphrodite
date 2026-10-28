@@ -1,11 +1,13 @@
 package strapi
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"math/rand"
 	"net/http"
 	"net/url"
@@ -16,7 +18,10 @@ import (
 	"aphrodite/internal/content"
 )
 
-var _ content.DocumentReader = (*Client)(nil)
+var (
+	_ content.DocumentReader = (*Client)(nil)
+	_ content.DocumentWriter = (*Client)(nil)
+)
 
 type Client struct {
 	baseURL         string
@@ -55,7 +60,7 @@ func newClient(cfg Config, httpClient *http.Client, sleep func(context.Context, 
 
 func (c *Client) List(ctx context.Context, resource string, query content.Query) (content.DocumentList, error) {
 	var envelope response
-	if err := c.do(ctx, http.MethodGet, resource, query, &envelope); err != nil {
+	if err := c.do(ctx, http.MethodGet, resource, query, nil, &envelope); err != nil {
 		return content.DocumentList{}, err
 	}
 	var items []documentDTO
@@ -82,9 +87,78 @@ func (c *Client) Get(ctx context.Context, resource, documentID string, query con
 		return content.Document{}, fmt.Errorf("%w: empty document ID", ErrInvalidResponse)
 	}
 	var envelope response
-	if err := c.do(ctx, http.MethodGet, resource+"/"+url.PathEscape(documentID), query, &envelope); err != nil {
+	if err := c.do(ctx, http.MethodGet, resource+"/"+url.PathEscape(documentID), query, nil, &envelope); err != nil {
 		return content.Document{}, err
 	}
+	if len(envelope.Data) == 0 || string(envelope.Data) == "null" {
+		return content.Document{}, ErrNotFound
+	}
+	var item documentDTO
+	if err := json.Unmarshal(envelope.Data, &item); err != nil {
+		return content.Document{}, fmt.Errorf("%w: document data: %v", ErrInvalidResponse, err)
+	}
+	result := toDocument(item)
+	if result.Meta == nil {
+		result.Meta = envelope.Meta
+	}
+	return result, nil
+}
+
+// Create stores a new Strapi document. The payload maps Strapi attribute
+// names to values; Strapi validates and rejects unknown attributes.
+func (c *Client) Create(ctx context.Context, resource string, payload map[string]any, query content.Query) (content.Document, error) {
+	body, err := marshalPayload(payload)
+	if err != nil {
+		return content.Document{}, err
+	}
+	var envelope response
+	if err := c.do(ctx, http.MethodPost, resource, query, body, &envelope); err != nil {
+		return content.Document{}, err
+	}
+	return decodeSingleDocument(envelope)
+}
+
+// Update modifies an existing Strapi document identified by its documentId.
+func (c *Client) Update(ctx context.Context, resource, documentID string, payload map[string]any, query content.Query) (content.Document, error) {
+	if strings.TrimSpace(documentID) == "" {
+		return content.Document{}, fmt.Errorf("%w: empty document ID", ErrInvalidResponse)
+	}
+	body, err := marshalPayload(payload)
+	if err != nil {
+		return content.Document{}, err
+	}
+	var envelope response
+	if err := c.do(ctx, http.MethodPut, resource+"/"+url.PathEscape(documentID), query, body, &envelope); err != nil {
+		return content.Document{}, err
+	}
+	return decodeSingleDocument(envelope)
+}
+
+// Delete removes a Strapi document by its documentId. Strapi returns 204
+// without a response body on success.
+func (c *Client) Delete(ctx context.Context, resource, documentID string, query content.Query) error {
+	if strings.TrimSpace(documentID) == "" {
+		return fmt.Errorf("%w: empty document ID", ErrInvalidResponse)
+	}
+	var envelope response
+	if err := c.do(ctx, http.MethodDelete, resource+"/"+url.PathEscape(documentID), query, nil, &envelope); err != nil {
+		return err
+	}
+	return nil
+}
+
+func marshalPayload(payload map[string]any) ([]byte, error) {
+	if payload == nil {
+		payload = map[string]any{}
+	}
+	body, err := json.Marshal(map[string]any{"data": payload})
+	if err != nil {
+		return nil, fmt.Errorf("%w: encode payload: %v", ErrInvalidResponse, err)
+	}
+	return body, nil
+}
+
+func decodeSingleDocument(envelope response) (content.Document, error) {
 	if len(envelope.Data) == 0 || string(envelope.Data) == "null" {
 		return content.Document{}, ErrNotFound
 	}
@@ -110,7 +184,7 @@ func (c *Client) FindBySlug(ctx context.Context, resource, slug string, query co
 		filters[key] = value
 	}
 	query.Filters = filters
-	query.Filters["slug[$eq]"] = slug
+	query.Filters["slug"] = slug
 	query.Page = 1
 	query.PageSize = 1
 	items, err := c.List(ctx, resource, query)
@@ -123,7 +197,7 @@ func (c *Client) FindBySlug(ctx context.Context, resource, slug string, query co
 	return items.Items[0], nil
 }
 
-func (c *Client) do(ctx context.Context, method, resource string, query content.Query, out *response) error {
+func (c *Client) do(ctx context.Context, method, resource string, query content.Query, body []byte, out *response) error {
 	if strings.TrimSpace(resource) == "" || strings.HasPrefix(resource, "/") {
 		return fmt.Errorf("%w: resource must be a non-empty API ID", ErrInvalidResponse)
 	}
@@ -133,19 +207,33 @@ func (c *Client) do(ctx context.Context, method, resource string, query content.
 		requestURL += "?" + encoded
 	}
 
+	// Editorial writes can commit before a response is lost. Even updates may
+	// contain relation operations that are unsafe to replay, so retry reads only.
+	maxRetries := 0
+	if method == http.MethodGet {
+		maxRetries = c.maxRetries
+	}
+
 	for attempt := 0; ; attempt++ {
-		req, err := http.NewRequestWithContext(ctx, method, requestURL, nil)
+		var reqBody io.Reader
+		if len(body) > 0 {
+			reqBody = bytes.NewReader(body)
+		}
+		req, err := http.NewRequestWithContext(ctx, method, requestURL, reqBody)
 		if err != nil {
 			return fmt.Errorf("%w: create request: %v", ErrInvalidResponse, err)
 		}
 		req.Header.Set("Accept", "application/json")
+		if len(body) > 0 {
+			req.Header.Set("Content-Type", "application/json")
+		}
 		if c.token != "" {
 			req.Header.Set("Authorization", "Bearer "+c.token)
 		}
 
 		res, err := c.httpClient.Do(req)
 		if err != nil {
-			if attempt < c.maxRetries && (retryableTransportError(err) || errors.Is(err, context.DeadlineExceeded)) {
+			if attempt < maxRetries && (retryableTransportError(err) || errors.Is(err, context.DeadlineExceeded)) {
 				if err := c.sleep(ctx, c.backoff(attempt)); err != nil {
 					return err
 				}
@@ -160,7 +248,7 @@ func (c *Client) do(ctx context.Context, method, resource string, query content.
 		body, readErr := io.ReadAll(io.LimitReader(res.Body, 4<<20))
 		res.Body.Close()
 		if readErr != nil {
-			if attempt < c.maxRetries {
+			if attempt < maxRetries {
 				if err := c.sleep(ctx, c.backoff(attempt)); err != nil {
 					return err
 				}
@@ -171,7 +259,19 @@ func (c *Client) do(ctx context.Context, method, resource string, query content.
 
 		if res.StatusCode < 200 || res.StatusCode >= 300 {
 			httpErr := decodeHTTPError(res.StatusCode, body)
-			if attempt < c.maxRetries && retryableStatus(res.StatusCode) {
+			// Strapi rejects malformed queries (e.g. invalid filter keys) with
+			// 4xx; surface the reason in server logs so the BFF's generic
+			// client responses stay debuggable.
+			if typed, ok := httpErr.(*HTTPError); ok {
+				slog.Warn("strapi request failed",
+					"method", method,
+					"resource", resource,
+					"status", res.StatusCode,
+					"name", typed.Name,
+					"message", typed.Message,
+				)
+			}
+			if attempt < maxRetries && retryableStatus(res.StatusCode) {
 				delay := c.backoff(attempt)
 				if retryAfter := retryAfter(res.Header.Get("Retry-After")); retryAfter > delay {
 					delay = retryAfter
@@ -182,6 +282,9 @@ func (c *Client) do(ctx context.Context, method, resource string, query content.
 				continue
 			}
 			return httpErr
+		}
+		if method == http.MethodDelete && res.StatusCode == http.StatusNoContent {
+			return nil
 		}
 		if len(body) == 0 {
 			return fmt.Errorf("%w: empty response", ErrInvalidResponse)
@@ -219,8 +322,11 @@ func queryValues(query content.Query) url.Values {
 	for _, populate := range query.Populate {
 		values.Add("populate[]", populate)
 	}
-	for key, value := range query.Filters {
-		values.Set("filters["+key+"]", value)
+	// Keep Strapi's bracket syntax inside this adapter. Nested attribute paths
+	// become deep filters such as filters[mainCategory][slug][$eq].
+	for path, value := range query.Filters {
+		key := "filters[" + strings.Join(strings.Split(path, "."), "][") + "][$eq]"
+		values.Set(key, value)
 	}
 	return values
 }
